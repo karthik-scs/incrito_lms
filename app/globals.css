@@ -1,26 +1,134 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  /* Font */
+  --font-sans: "Inter", sans-serif;
+
+  /* Page and surface backgrounds */
+  --color-background: #f6f7fb;
+  --color-surface: #ffffff;
+  --color-surface-secondary: #f9fafb;
+  --color-surface-tertiary: #f2f5f7;
+  --color-surface-muted: #f4f5fb;
+
+  /* Borders */
+  --color-border: #e7eaf3;
+  --color-border-light: #e5e7eb;
+  --color-border-muted: #dfe1e7;
+
+  /* Text */
+  --color-text-primary: #101828;
+  --color-text-secondary: #6a7282;
+  --color-text-muted: #99a1af;
+  --color-text-dark: #364153;
+  --color-text-darker: #36394a;
+  --color-text-darkest: #111827;
+  --color-text-black: #131316;
+  --color-text-slate: #272835;
+  --color-text-slate-medium: #666d80;
+
+  /* Primary accent — purple */
+  --color-accent: #0545b0;
+  --color-accent-dark: #2b1cb5;
+  --color-accent-light: #f3e8ff;
+  --color-accent-muted: #faf5ff;
+  --color-accent-foreground: #ffffff;
+
+  /* Success — green */
+  --color-success: #10b981;
+  --color-success-alt: #00bc7d;
+  --color-success-dark: #007a55;
+  --color-success-darker: #009966;
+  --color-success-light: #d0fae5;
+  --color-success-lightest: #ecfdf5;
+  --color-success-foreground: #007a55;
+
+  /* Info — blue */
+  --color-info: #61a8ff;
+  --color-info-dark: #155dfc;
+  --color-info-medium: #2b7fff;
+  --color-info-light: #dbeafe;
+  --color-info-lightest: #eff6ff;
+  --color-info-foreground: #155dfc;
+  --color-info-muted: #94a2c5;
+
+  /* Warning — orange */
+  --color-warning: #ff8904;
+  --color-warning-foreground: #ffffff;
+
+  /* Premium — gold (Intensive Pro plan badges) */
+  --color-premium: #b45309;
+  --color-premium-light: #fef3c7;
+  --color-premium-foreground: #92400e;
+
+  /* Error — red */
+  --color-error: #ef4444;
+  --color-error-foreground: #ffffff;
+
+  /* Dark overlays */
+  --color-overlay: #111827;
+  --color-overlay-dark: #131316;
+
+  /* Border radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+/*
+ * Dark mode overrides every color token consumed by the @theme block above.
+ * Tailwind utilities already reference these as CSS variables, so toggling the
+ * `.dark` class on <html> (see components/theme/ThemeToggle.tsx) re-themes the
+ * whole app without touching any component markup.
+ */
+.dark {
+  --color-background: #0d0e14;
+  --color-surface: #16171f;
+  --color-surface-secondary: #1c1d27;
+  --color-surface-tertiary: #1a1b24;
+  --color-surface-muted: #1e1f29;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-border: #2b2c38;
+  --color-border-light: #33343f;
+  --color-border-muted: #2e2f3a;
+
+  --color-text-primary: #f3f4f6;
+  --color-text-secondary: #9aa1b0;
+  --color-text-muted: #7c8392;
+  --color-text-dark: #cbd2dc;
+  --color-text-darker: #d4d6e0;
+  --color-text-darkest: #f9fafb;
+  --color-text-black: #f5f5f6;
+  --color-text-slate: #c7c8d4;
+  --color-text-slate-medium: #9ea4b3;
+
+  --color-accent-light: #2a1f47;
+  --color-accent-muted: #241c38;
+  --color-accent-dark: #3d2bc9;
+
+  --color-success-dark: #34d399;
+  --color-success-darker: #2dd4a8;
+  --color-success-light: #103326;
+  --color-success-lightest: #0d2a20;
+  --color-success-foreground: #34d399;
+
+  --color-info-light: #142b4d;
+  --color-info-lightest: #11233d;
+  --color-info-foreground: #7fb1ff;
+  --color-info-muted: #6b7794;
+
+  --color-premium: #fbbf24;
+  --color-premium-light: #3f2d06;
+  --color-premium-foreground: #fcd34d;
+
+  --color-overlay: #05060a;
+  --color-overlay-dark: #030305;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  transition: background-color 0.2s ease, color 0.2s ease;
 }

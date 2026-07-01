@@ -1,0 +1,1548 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Identity & access (students, mentors, cohort managers, admins, custom roles)
+// ---------------------------------------------------------------------------
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  INVITED
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  isSystem    Boolean  @default(false)
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  permissions RolePermission[]
+  users       User[]
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+
+  roles RolePermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model User {
+  id              String        @id @default(cuid())
+  email           String        @unique
+  mobileNumber    String?       @unique
+  passwordHash    String
+  firstName       String
+  lastName        String
+  avatarUrl       String?
+  status          AccountStatus @default(ACTIVE)
+  emailVerifiedAt DateTime?
+  mfaEnabled      Boolean       @default(false)
+  mfaSecret       String?
+  roleId          String
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  role Role @relation(fields: [roleId], references: [id])
+
+  sessions          Session[]
+  verificationCodes VerificationCode[]
+
+  coursesMentoring         Course[]                  @relation("CourseMentor")
+  coursesCreated           Course[]                  @relation("CourseCreatedBy")
+  cohortManagerAssignments CohortManagerAssignment[] @relation("CohortManagerAssignment")
+  cohortMentorships        CohortMentor[]            @relation("CohortMentorAssignment")
+  enrollments              Enrollment[]
+  liveClassesHosting       LiveClass[]               @relation("LiveClassMentor")
+  liveAccounts             UserLiveAccount[]
+  attendances              Attendance[]
+  assignmentsCreated       Assignment[]              @relation("AssignmentCreatedBy")
+  submissions              Submission[]              @relation("SubmissionStudent")
+  submissionsGraded        Submission[]              @relation("SubmissionGradedBy")
+  assessmentsCreated       Assessment[]              @relation("AssessmentCreatedBy")
+  attempts                 AssessmentAttempt[]
+  progress                 Progress[]
+  lessonProgress           LessonProgress[]
+  leaderboardEntries       LeaderboardEntry[]
+  certificates             Certificate[]
+  notifications            Notification[]
+  notificationPreference   NotificationPreference?
+  posts                    Post[]
+  comments                 Comment[]
+  reactions                Reaction[]
+  conversationMemberships  ConversationParticipant[]
+  chatMessages             ChatMessage[]
+  createdCommunities       Community[]               @relation("CommunityCreator")
+  communityMemberships     CommunityMember[]
+  announcementsCreated     Announcement[]            @relation("AnnouncementCreatedBy")
+  pollsCreated             Poll[]                    @relation("PollCreatedBy")
+  pollVotes                PollVote[]
+  communityEventsCreated   CommunityEvent[]          @relation("CommunityEventCreatedBy")
+
+  // Mentor 1:1 booking
+  availabilitySlots MentorAvailability[] @relation("MentorAvailability")
+  bookingsAsMentor  MentorBooking[]      @relation("MentorBookings")
+  bookingsAsStudent MentorBooking[]      @relation("StudentBookings")
+
+  // Mentor ratings
+  ratingsGiven    MentorRating[] @relation("RatingGiver")
+  ratingsReceived MentorRating[] @relation("RatingReceiver")
+
+  // WebRTC 1:1 calls
+  callsInitiated  CallSession[] @relation("CallInitiator")
+  callsReceived   CallSession[] @relation("CallReceiver")
+
+  @@index([roleId])
+}
+
+model Session {
+  id               String    @id @default(cuid())
+  userId           String
+  refreshTokenHash String
+  userAgent        String?
+  ipAddress        String?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+enum VerificationPurpose {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+model VerificationCode {
+  id         String              @id @default(cuid())
+  userId     String
+  purpose    VerificationPurpose
+  code       String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  attempts   Int                 @default(0)
+  createdAt  DateTime            @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+}
+
+// ---------------------------------------------------------------------------
+// Course taxonomy
+// ---------------------------------------------------------------------------
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  courses Course[]
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  courses CourseTag[]
+}
+
+model CourseTag {
+  courseId String
+  tagId    String
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([courseId, tagId])
+}
+
+// ---------------------------------------------------------------------------
+// Courses & curriculum
+// ---------------------------------------------------------------------------
+
+enum CourseStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum UnlockMode {
+  SEQUENTIAL
+  FREE
+}
+
+/**
+ * Content-visibility setting on Course/Module/Lesson/CourseCertificate — `BOTH` (the default)
+ * means every plan can see it; the other two values restrict it to that one tier. Locking
+ * cascades down Course -> Module -> Lesson: a piece of content is locked for a student if itself
+ * *or any ancestor* requires a tier they don't hold.
+ */
+enum PlanAccess {
+  ICAP
+  INTENSIVE_PRO
+  BOTH
+}
+
+enum DurationUnit {
+  DAYS
+  MONTHS
+  YEARS
+}
+
+model Course {
+  id                  String       @id @default(cuid())
+  title               String
+  slug                String       @unique
+  description         String?
+  thumbnailUrl        String?
+  status              CourseStatus @default(DRAFT)
+  categoryId          String?
+  isFree              Boolean      @default(true)
+  priceInSmallestUnit Int?
+  currency            String       @default("INR")
+  unlockMode          UnlockMode   @default(SEQUENTIAL)
+  /**
+   * Course-level plan gate — locking the whole course this way is how "bonus courses" work, no separate concept needed.
+   */
+  planAccess          PlanAccess   @default(BOTH)
+  mentorId            String
+  createdById         String
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  mentor             User                @relation("CourseMentor", fields: [mentorId], references: [id])
+  createdBy          User                @relation("CourseCreatedBy", fields: [createdById], references: [id])
+  category           Category?           @relation(fields: [categoryId], references: [id])
+  tags               CourseTag[]
+  modules            Module[]
+  cohorts            Cohort[]
+  assessments        Assessment[]
+  assignments        Assignment[]
+  /**
+   * A course can allocate more than one certificate — overall completion, or completing specific modules.
+   */
+  courseCertificates CourseCertificate[]
+
+  @@index([mentorId])
+  @@index([createdById])
+  @@index([categoryId])
+}
+
+model Module {
+  id         String     @id @default(cuid())
+  courseId   String
+  title      String
+  order      Int
+  planAccess PlanAccess @default(BOTH)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  course                 Course                    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons                Lesson[]
+  assessments            Assessment[]
+  assignments            Assignment[]
+  courseCertificateLinks CourseCertificateModule[]
+
+  @@unique([courseId, order])
+}
+
+enum LessonType {
+  VIDEO
+  TEXT
+  PDF
+  LIVE
+}
+
+model Lesson {
+  id              String     @id @default(cuid())
+  moduleId        String
+  title           String
+  type            LessonType @default(VIDEO)
+  contentUrl      String?
+  /**
+   * Poster image shown before playback starts — also used as the cover while paused/buffering.
+   */
+  thumbnailUrl    String?
+  content         String?
+  durationMinutes Int?
+  order           Int
+  planAccess      PlanAccess @default(BOTH)
+  /**
+   * Only set when type is LIVE — links this curriculum slot to its scheduled/recorded session.
+   */
+  liveClassId     String?    @unique
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  module      Module           @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  liveClass   LiveClass?       @relation(fields: [liveClassId], references: [id])
+  assignments Assignment[]
+  resources   Resource[]
+  progress    LessonProgress[]
+  assessments Assessment[]
+
+  @@unique([moduleId, order])
+}
+
+/**
+ * A file or link shared alongside a lesson — visible in the Learn page's Resources tab.
+ */
+model Resource {
+  id        String   @id @default(cuid())
+  lessonId  String
+  title     String
+  fileUrl   String
+  fileType  String
+  createdAt DateTime @default(now())
+
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@index([lessonId])
+}
+
+/**
+ * Per-lesson completion, distinct from Progress (which is a per-cohort rollup percentage).
+ * Drives the Roadmap page's checkmarks/lock state and sequential unlock logic.
+ */
+model LessonProgress {
+  id          String    @id @default(cuid())
+  userId      String
+  lessonId    String
+  completed   Boolean   @default(false)
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, lessonId])
+}
+
+// ---------------------------------------------------------------------------
+// Cohorts & enrollment
+// ---------------------------------------------------------------------------
+
+enum CohortStatus {
+  ACTIVE
+  UPCOMING
+  COMPLETED
+  CANCELLED
+  ARCHIVED
+}
+
+model Cohort {
+  id        String       @id @default(cuid())
+  courseId  String
+  name      String
+  status    CohortStatus @default(UPCOMING)
+  startDate DateTime
+  endDate   DateTime?
+  capacity  Int?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  course Course @relation(fields: [courseId], references: [id])
+
+  /**
+   * Zero or more — replaced the old single `cohortManagerId` field so a cohort can have multiple managers.
+   */
+  managers           CohortManagerAssignment[]
+  mentors            CohortMentor[]
+  enrollments        Enrollment[]
+  liveClasses        LiveClass[]
+  progress           Progress[]
+  leaderboardEntries LeaderboardEntry[]
+  certificates       Certificate[]
+  posts              Post[]
+  mentorBookings     MentorBooking[]
+
+  @@index([courseId])
+}
+
+/**
+ * A cohort can have one or more cohort managers, mirroring the `CohortMentor` join table below.
+ */
+model CohortManagerAssignment {
+  cohortId String
+  userId   String
+
+  cohort Cohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  user   User   @relation("CohortManagerAssignment", fields: [userId], references: [id])
+
+  @@id([cohortId, userId])
+}
+
+/**
+ * A cohort can have one or more mentors teaching it, separate from the course's own default mentor.
+ */
+model CohortMentor {
+  cohortId String
+  userId   String
+
+  cohort Cohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  user   User   @relation("CohortMentorAssignment", fields: [userId], references: [id])
+
+  @@id([cohortId, userId])
+}
+
+enum EnrollmentStatus {
+  PENDING
+  ACTIVE
+  COMPLETED
+  DROPPED
+}
+
+model Enrollment {
+  id                       String           @id @default(cuid())
+  userId                   String
+  cohortId                 String
+  status                   EnrollmentStatus @default(PENDING)
+  enrolledAt               DateTime         @default(now())
+  accessStartAt            DateTime?
+  accessEndAt              DateTime?
+  /**
+   * Assigned when the student is allocated to this cohort — drives which course content/certificates they see and whether they qualify for Premium Community / Mentor chat.
+   */
+  plan                     String           @default("ICAP")
+  /**
+   * Snapshotted once at enrollment time from `PlanSetting`'s duration for this plan — deliberately
+   * not recomputed live, so changing the duration setting later doesn't retroactively shrink or
+   * extend access for students already enrolled under the old duration.
+   */
+  lmsAccessExpiresAt       DateTime?
+  recordingAccessExpiresAt DateTime?
+
+  user   User   @relation(fields: [userId], references: [id])
+  cohort Cohort @relation(fields: [cohortId], references: [id])
+
+  @@unique([userId, cohortId])
+}
+
+// ---------------------------------------------------------------------------
+// Live classes & attendance
+// ---------------------------------------------------------------------------
+
+enum LiveClassStatus {
+  SCHEDULED
+  LIVE
+  COMPLETED
+  CANCELLED
+}
+
+model LiveClass {
+  id                String          @id @default(cuid())
+  /**
+   * Optional — a lesson's live session is scheduled once at the course-curriculum level
+   * (Course > Module > Lesson), not per-cohort. Cohort-specific scheduling can be layered on
+   * later; until then this is null for lesson-driven live classes.
+   */
+  cohortId          String?
+  /**
+   * The field is still named `mentorId` (avoids a sweeping rename across every caller), but the
+   * host doesn't have to actually hold the Mentor role — Admin/Mentor/Cohort Manager can all be
+   * picked as host in the UI, since any of them is allowed to run a live class.
+   */
+  mentorId          String
+  /**
+   * Which provider this meeting was scheduled on. Determines which join/start fields below are
+   * populated and how the join experience behaves — both providers open in a new tab to start/join
+   * (no in-app embedding for either, by explicit decision); this field only affects scheduling and
+   * recording-retrieval logic, not the join UI itself.
+   */
+  provider          LiveProvider    @default(ZOOM)
+  /**
+   * The specific connected account this meeting was scheduled under. Null means it used the
+   * legacy shared `ZoomAccount` pool (pre-personal-accounts rows, or a host with no personal
+   * account connected who fell back to the shared pool) rather than a host's own connected
+   * Zoom/Zoho account.
+   */
+  userLiveAccountId String?
+  /**
+   * Which (legacy, shared) Zoom account this meeting was scheduled under — null for rows that
+   * used a host's own personal `UserLiveAccount` instead, or that are on Zoho.
+   */
+  zoomAccountId     String?
+  title             String
+  zoomMeetingId     String?
+  zoomPasscode      String?
+  /**
+   * Zoho's equivalent of `zoomMeetingId` — only set when `provider` is ZOHO.
+   */
+  zohoMeetingId     String?
+  joinUrl           String?
+  /**
+   * Host-side start link (different from joinUrl) — only the mentor/host should use this. Works
+   * the same way for both providers: opens that provider's own site/app in a new tab to start.
+   */
+  hostStartUrl      String?
+  /**
+   * Set once a recording is available for on-demand viewing. Two paths populate this: (1) Zoom's
+   * `recording.completed` webhook auto-downloads and stores it (unchanged, see
+   * zoomWebhook.service.ts), or (2) the host manually uploads a recording file through the app
+   * (required for Zoho, since there's no reliable automatic pull; also available as an override
+   * for Zoom). Either way this ends up as an S3 object key, never a permanent public URL — actual
+   * playback always goes through the signed-URL protection endpoint.
+   */
+  recordingUrl      String?
+  startTime         DateTime
+  endTime           DateTime
+  /**
+   * Real start/end times reported by Zoom's `meeting.started`/`meeting.ended` webhooks, distinct
+   * from the scheduled `startTime`/`endTime` above. There is deliberately no hard cutoff at the
+   * scheduled `endTime` — a session stays joinable for as long as Zoom (or the host, manually)
+   * says it's still LIVE, not until some pre-guessed end time passes.
+   */
+  startedAt         DateTime?
+  endedAt           DateTime?
+  status            LiveClassStatus @default(SCHEDULED)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  cohort          Cohort?          @relation(fields: [cohortId], references: [id])
+  mentor          User             @relation("LiveClassMentor", fields: [mentorId], references: [id])
+  zoomAccount     ZoomAccount?     @relation(fields: [zoomAccountId], references: [id], onDelete: SetNull)
+  userLiveAccount UserLiveAccount? @relation(fields: [userLiveAccountId], references: [id], onDelete: SetNull)
+  attendances     Attendance[]
+  lesson          Lesson?
+
+  @@index([cohortId])
+  @@index([mentorId])
+  @@index([zoomAccountId])
+  @@index([userLiveAccountId])
+}
+
+enum LiveProvider {
+  ZOOM
+  ZOHO
+}
+
+/**
+ * One row per (user, provider) — a Mentor/Cohort Manager/Admin's own personally-connected Zoom
+ * or Zoho account, used to schedule live classes under their own license rather than the shared
+ * admin-managed `ZoomAccount` pool. A host can have at most one connected account per provider.
+ * Both providers open in a new tab to start/join (no in-app embedding) — these credentials are
+ * only ever used server-side, to call each provider's scheduling API.
+ */
+model UserLiveAccount {
+  id       String       @id @default(cuid())
+  userId   String
+  provider LiveProvider
+
+  /**
+   * Zoom Server-to-Server OAuth credentials — same shape as the admin-managed `ZoomAccount`.
+   */
+  zoomAccountId    String?
+  zoomClientId     String?
+  zoomClientSecret String?
+  zoomSecretToken  String?
+
+  /**
+   * Zoho OAuth — a self-client app registered once at the org level (env vars) issues these via
+   * the standard authorization-code flow; each user does their own one-time consent to link their
+   * personal Zoho Workplace account. The access token is short-lived and refreshed on demand from
+   * `zohoRefreshToken`, never stored itself.
+   */
+  zohoRefreshToken     String?
+  zohoAccountOwnerName String?
+  /**
+   * Cached after the first successful Zoho API call (`GET /api/v2/user.json`) rather than
+   * re-fetched before every meeting — `zsoid` (organization ID, required as a path segment on
+   * every other Zoho Meeting endpoint) and `zuid` (this user's own ID, required as the
+   * `presenter` field when scheduling — Zoho rejects a request with no presenter).
+   */
+  zohoZsoid            String?
+  zohoZuid             String?
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  liveClasses LiveClass[]
+
+  @@unique([userId, provider])
+}
+
+/**
+ * One row per Zoom Server-to-Server OAuth app, managed from Admin Settings → "Live Class API".
+ * Multiple rows exist specifically to work around a paid plan's concurrent-meeting limit — when
+ * an account already has `concurrentLimit` meetings scheduled in an overlapping time window,
+ * `zoom.ts#pickZoomAccount` automatically rotates to the next account with capacity instead of
+ * letting the Zoom API call fail.
+ */
+model ZoomAccount {
+  id              String   @id @default(cuid())
+  label           String
+  zoomAccountId   String
+  clientId        String
+  clientSecret    String
+  /**
+   * Webhook "Secret Token," used to verify the HMAC signature on incoming Zoom webhook events.
+   */
+  secretToken     String
+  /**
+   * A Meeting SDK app's key/secret (NOT the same as the Server-to-Server OAuth clientId/secret
+   * above — Zoom treats "Meeting SDK" and "Server-to-Server OAuth" as separate app types) —
+   * required only for real in-app meeting embedding via @zoom/meetingsdk. Left null, in-app join
+   * falls back to opening the Zoom join URL in a new tab.
+   */
+  sdkKey          String?
+  sdkSecret       String?
+  /**
+   * Zoom Business plan default: 2 concurrent meetings per account before rotating to the next.
+   */
+  concurrentLimit Int      @default(2)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  liveClasses LiveClass[]
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+}
+
+model Attendance {
+  id              String           @id @default(cuid())
+  liveClassId     String
+  userId          String
+  status          AttendanceStatus @default(ABSENT)
+  joinedAt        DateTime?
+  leftAt          DateTime?
+  durationMinutes Int?
+
+  liveClass LiveClass @relation(fields: [liveClassId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@unique([liveClassId, userId])
+}
+
+// ---------------------------------------------------------------------------
+// Assignments
+// ---------------------------------------------------------------------------
+
+/**
+ * Scoped to course/module/lesson at creation time, like Assessment — not to a cohort. Any
+ * student enrolled in a cohort running this course can see and submit it.
+ */
+model Assignment {
+  id          String    @id @default(cuid())
+  courseId    String
+  moduleId    String?
+  lessonId    String?
+  title       String
+  description String?
+  dueDate     DateTime?
+  maxMarks    Int
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  course      Course       @relation(fields: [courseId], references: [id])
+  module      Module?      @relation(fields: [moduleId], references: [id])
+  lesson      Lesson?      @relation(fields: [lessonId], references: [id])
+  createdBy   User         @relation("AssignmentCreatedBy", fields: [createdById], references: [id])
+  submissions Submission[]
+
+  @@index([courseId])
+  @@index([moduleId])
+  @@index([lessonId])
+}
+
+enum SubmissionStatus {
+  SUBMITTED
+  GRADED
+  RESUBMITTED
+  OVERDUE
+}
+
+model Submission {
+  id            String           @id @default(cuid())
+  assignmentId  String
+  userId        String
+  fileUrl       String?
+  content       String?
+  status        SubmissionStatus @default(SUBMITTED)
+  marksObtained Int?
+  feedback      String?
+  submittedAt   DateTime         @default(now())
+  gradedById    String?
+  gradedAt      DateTime?
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  user       User       @relation("SubmissionStudent", fields: [userId], references: [id])
+  gradedBy   User?      @relation("SubmissionGradedBy", fields: [gradedById], references: [id])
+
+  @@unique([assignmentId, userId])
+}
+
+// ---------------------------------------------------------------------------
+// Assessments
+// ---------------------------------------------------------------------------
+
+enum AssessmentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum AssessmentKind {
+  QUIZ
+  ASSESSMENT
+}
+
+model Assessment {
+  id               String           @id @default(cuid())
+  courseId         String
+  /**
+   * Scopes this assessment to one module or lesson within the course — both optional, course-wide if neither is set.
+   */
+  moduleId         String?
+  lessonId         String?
+  kind             AssessmentKind   @default(QUIZ)
+  title            String
+  passingScore     Int
+  timeLimitMinutes Int
+  maxAttempts      Int              @default(1)
+  status           AssessmentStatus @default(DRAFT)
+  createdById      String
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  course    Course              @relation(fields: [courseId], references: [id])
+  module    Module?             @relation(fields: [moduleId], references: [id])
+  lesson    Lesson?             @relation(fields: [lessonId], references: [id])
+  createdBy User                @relation("AssessmentCreatedBy", fields: [createdById], references: [id])
+  questions Question[]
+  attempts  AssessmentAttempt[]
+
+  @@index([courseId])
+  @@index([moduleId])
+  @@index([lessonId])
+}
+
+enum QuestionType {
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+}
+
+model Question {
+  id           String       @id @default(cuid())
+  assessmentId String
+  text         String
+  type         QuestionType @default(SINGLE_CHOICE)
+  marks        Int          @default(1)
+  order        Int
+
+  assessment Assessment       @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  options    QuestionOption[]
+  answers    AttemptAnswer[]
+
+  @@unique([assessmentId, order])
+}
+
+model QuestionOption {
+  id         String  @id @default(cuid())
+  questionId String
+  text       String
+  isCorrect  Boolean @default(false)
+
+  question        Question              @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  selectedAnswers AttemptAnswerOption[]
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+  GRADED
+}
+
+model AssessmentAttempt {
+  id            String        @id @default(cuid())
+  assessmentId  String
+  userId        String
+  attemptNumber Int
+  status        AttemptStatus @default(IN_PROGRESS)
+  score         Int?
+  startedAt     DateTime      @default(now())
+  submittedAt   DateTime?
+
+  assessment Assessment      @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  user       User            @relation(fields: [userId], references: [id])
+  answers    AttemptAnswer[]
+
+  @@unique([assessmentId, userId, attemptNumber])
+}
+
+model AttemptAnswer {
+  id           String   @id @default(cuid())
+  attemptId    String
+  questionId   String
+  isCorrect    Boolean?
+  marksAwarded Int?
+
+  attempt         AssessmentAttempt     @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question        Question              @relation(fields: [questionId], references: [id])
+  selectedOptions AttemptAnswerOption[]
+
+  @@unique([attemptId, questionId])
+}
+
+model AttemptAnswerOption {
+  attemptAnswerId String
+  optionId        String
+
+  attemptAnswer AttemptAnswer  @relation(fields: [attemptAnswerId], references: [id], onDelete: Cascade)
+  option        QuestionOption @relation(fields: [optionId], references: [id])
+
+  @@id([attemptAnswerId, optionId])
+}
+
+// ---------------------------------------------------------------------------
+// Progress & leaderboard
+// ---------------------------------------------------------------------------
+
+model Progress {
+  id                   String    @id @default(cuid())
+  userId               String
+  cohortId             String
+  completionPercentage Int       @default(0)
+  lastActivityAt       DateTime?
+  updatedAt            DateTime  @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id])
+  cohort Cohort @relation(fields: [cohortId], references: [id])
+
+  @@unique([userId, cohortId])
+}
+
+model LeaderboardEntry {
+  id         String   @id @default(cuid())
+  cohortId   String
+  userId     String
+  points     Int      @default(0)
+  rank       Int?
+  computedAt DateTime @default(now())
+
+  cohort Cohort @relation(fields: [cohortId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@unique([cohortId, userId])
+}
+
+// ---------------------------------------------------------------------------
+// Certificates
+// ---------------------------------------------------------------------------
+
+/**
+ * Reusable certificate design/criteria, assignable to a Course — separate from an issued Certificate record.
+ */
+model CertificateTemplate {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  designUrl   String?
+  /**
+   * Array of positioned layers (text/variable/image/qr) drawn over `designUrl` by the admin
+   * Certificate Designer — e.g. [{ id, type, x, y, width, height, fontSize, color, content }].
+   * Defaults to an empty canvas (no layers yet) rather than null, so the frontend never has to
+   * branch on "hasn't been designed yet" vs. "designed with zero layers."
+   */
+  canvasLayout String   @default("landscape")
+  bgConfig     Json?
+  layers       Json     @default("[]")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  courseCertificates CourseCertificate[]
+  certificates       Certificate[]
+}
+
+enum CertificateScope {
+  /**
+   * Unlocked once the whole course reaches 100% completion.
+   */
+  COURSE
+  /**
+   * Unlocked once every lesson in `requiredModules` is completed — a partial/milestone certificate.
+   */
+  MODULES
+}
+
+/**
+ * One certificate a course can award — a course can have more than one (e.g. a milestone
+ * certificate for finishing the first few modules, plus a full completion certificate), each with
+ * its own design (`template`) and its own unlock criteria (`scope` + `requiredModules`).
+ */
+model CourseCertificate {
+  id         String           @id @default(cuid())
+  courseId   String
+  templateId String
+  title      String
+  scope      CertificateScope @default(COURSE)
+  /**
+   * Which plan tier(s) this certificate allocation is available to — eligibility is denied outright for a student whose plan doesn't match, regardless of completion.
+   */
+  planAccess PlanAccess       @default(BOTH)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  course          Course                    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  template        CertificateTemplate       @relation(fields: [templateId], references: [id])
+  requiredModules CourseCertificateModule[]
+  certificates    Certificate[]
+
+  @@index([courseId])
+  @@index([templateId])
+}
+
+/**
+ * Which modules count toward a MODULES-scope CourseCertificate — empty/unused for COURSE scope.
+ */
+model CourseCertificateModule {
+  courseCertificateId String
+  moduleId            String
+
+  courseCertificate CourseCertificate @relation(fields: [courseCertificateId], references: [id], onDelete: Cascade)
+  module            Module            @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@id([courseCertificateId, moduleId])
+}
+
+model Certificate {
+  id                  String   @id @default(cuid())
+  userId              String
+  cohortId            String
+  courseCertificateId String
+  /**
+   * Snapshots the design used at issuance — kept even if the CourseCertificate's own template assignment changes later.
+   */
+  templateId          String?
+  certificateNumber   String   @unique
+  verificationToken   String   @unique
+  pdfUrl              String?
+  issuedAt            DateTime @default(now())
+
+  user              User                 @relation(fields: [userId], references: [id])
+  cohort            Cohort               @relation(fields: [cohortId], references: [id])
+  courseCertificate CourseCertificate    @relation(fields: [courseCertificateId], references: [id])
+  template          CertificateTemplate? @relation(fields: [templateId], references: [id])
+
+  @@unique([userId, cohortId, courseCertificateId])
+}
+
+// ---------------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------------
+
+enum NotificationType {
+  ENROLLMENT
+  CLASS_SCHEDULED
+  CLASS_REMINDER
+  ASSIGNMENT_GRADED
+  CERTIFICATE_ISSUED
+  ANNOUNCEMENT
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  message   String
+  isRead    Boolean          @default(false)
+  readAt    DateTime?
+  metadata  Json?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+/**
+ * Per-user email notification preferences, shown on the Settings > Notification Settings tab.
+ */
+model NotificationPreference {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  emailEnabled        Boolean  @default(true)
+  enrollmentEmails    Boolean  @default(true)
+  announcementEmails  Boolean  @default(true)
+  certificateEmails   Boolean  @default(true)
+  productUpdateEmails Boolean  @default(false)
+  updatedAt           DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum AnnouncementAudience {
+  ALL
+  STUDENTS
+  MENTORS
+  COHORT_MANAGERS
+}
+
+/**
+ * Admin-broadcast announcement — creating one fans out a real `Notification` (type ANNOUNCEMENT)
+ * to every targeted user, reusing the existing notification bell/dropdown rather than a separate
+ * announcements inbox. This row is the durable record of what was sent and to whom.
+ */
+model Announcement {
+  id          String               @id @default(cuid())
+  title       String
+  content     String
+  audience    AnnouncementAudience @default(ALL)
+  createdById String
+  createdAt   DateTime             @default(now())
+
+  createdBy User @relation("AnnouncementCreatedBy", fields: [createdById], references: [id])
+
+  @@index([createdById])
+}
+
+// ---------------------------------------------------------------------------
+// Community (per-cohort standard discussion + admin-created premium communities)
+// ---------------------------------------------------------------------------
+
+enum ModerationStatus {
+  VISIBLE
+  HIDDEN
+  REMOVED
+}
+
+enum CommunityTier {
+  STANDARD
+  PREMIUM
+}
+
+/**
+ * Admin-created premium community — membership-gated, not per-cohort.
+ */
+model Community {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  coverUrl    String?
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy User              @relation("CommunityCreator", fields: [createdById], references: [id])
+  members   CommunityMember[]
+  posts     Post[]
+  polls     Poll[]
+  events    CommunityEvent[]
+
+  @@index([createdById])
+}
+
+model CommunityMember {
+  communityId String
+  userId      String
+  addedAt     DateTime @default(now())
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([communityId, userId])
+}
+
+/**
+ * Creation restricted to Admin/Mentor/Cohort Manager — enforced in poll.service.ts, not a separate permission, since it's a role-name rule rather than a custom grant.
+ */
+model Poll {
+  id          String   @id @default(cuid())
+  communityId String
+  question    String
+  createdById String
+  createdAt   DateTime @default(now())
+
+  community Community    @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  createdBy User         @relation("PollCreatedBy", fields: [createdById], references: [id])
+  options   PollOption[]
+  votes     PollVote[]
+
+  @@index([communityId])
+}
+
+model PollOption {
+  id     String @id @default(cuid())
+  pollId String
+  label  String
+
+  poll  Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  votes PollVote[]
+
+  @@index([pollId])
+}
+
+model PollVote {
+  id       String   @id @default(cuid())
+  pollId   String
+  optionId String
+  userId   String
+  votedAt  DateTime @default(now())
+
+  poll   Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  option PollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /**
+   * One vote per user per poll — changing your vote updates this row rather than adding a second.
+   */
+  @@unique([pollId, userId])
+}
+
+/**
+ * Creation restricted to Admin/Mentor/Cohort Manager, same rule as Poll.
+ */
+model CommunityEvent {
+  id          String    @id @default(cuid())
+  communityId String
+  title       String
+  description String?
+  startTime   DateTime
+  endTime     DateTime?
+  location    String?
+  createdById String
+  createdAt   DateTime  @default(now())
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  createdBy User      @relation("CommunityEventCreatedBy", fields: [createdById], references: [id])
+
+  @@index([communityId])
+}
+
+model Post {
+  id              String           @id @default(cuid())
+  cohortId        String?
+  communityId     String?
+  authorId        String
+  title           String
+  content         String
+  isPinned        Boolean          @default(false)
+  moderation      ModerationStatus @default(VISIBLE)
+  isCommunityPost Boolean          @default(false)
+  communityTier   CommunityTier?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  cohort    Cohort?    @relation(fields: [cohortId], references: [id])
+  community Community? @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  author    User       @relation(fields: [authorId], references: [id])
+  comments  Comment[]
+  reactions Reaction[]
+
+  @@index([cohortId])
+  @@index([communityId])
+}
+
+model Comment {
+  id              String           @id @default(cuid())
+  postId          String
+  authorId        String
+  parentCommentId String?
+  content         String?
+  attachmentUrl   String?
+  attachmentType  String?
+  editedAt        DateTime?
+  moderation      ModerationStatus @default(VISIBLE)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  post          Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author        User       @relation(fields: [authorId], references: [id])
+  parentComment Comment?   @relation("CommentReplies", fields: [parentCommentId], references: [id], onDelete: Cascade)
+  replies       Comment[]  @relation("CommentReplies")
+  reactions     Reaction[]
+
+  @@index([postId])
+  @@index([parentCommentId])
+}
+
+model Reaction {
+  id        String   @id @default(cuid())
+  userId    String
+  postId    String?
+  commentId String?
+  messageId String?
+  /**
+   * Emoji character — any single emoji (👍 ❤️ 😂 🎉 😮 😢). One reaction per user per post/comment/message.
+   */
+  emoji     String   @default("👍")
+  createdAt DateTime @default(now())
+
+  user    User         @relation(fields: [userId], references: [id])
+  post    Post?        @relation(fields: [postId], references: [id], onDelete: Cascade)
+  comment Comment?     @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  message ChatMessage? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId, commentId, messageId])
+}
+
+// ---------------------------------------------------------------------------
+// Plans (Admin > Settings > Plans) — ICAP / Intensive Pro duration configuration
+// ---------------------------------------------------------------------------
+
+/**
+ * One row per plan — admins can create, rename, and delete plans. The `plan` field is the
+ * internal key (used in Enrollment.plan and content-access checks) and must match a PlanAccess
+ * enum value (ICAP or INTENSIVE_PRO) for content-gating to work; custom plans default to BOTH.
+ * `displayName` is the user-facing label shown in the UI.
+ */
+model PlanSetting {
+  id                           String       @id @default(cuid())
+  plan                         String       @unique
+  displayName                  String
+  lmsAccessDurationValue       Int
+  lmsAccessDurationUnit        DurationUnit
+  recordingAccessDurationValue Int
+  recordingAccessDurationUnit  DurationUnit
+
+  // 1:1 call permissions — null means unlimited
+  canAccess1on1Calls           Boolean      @default(true)
+  mentorCallLimitPerMonth      Int?
+  studentCallLimitPerMonth     Int?
+
+  // Feature access per plan
+  canDownloadResources         Boolean      @default(true)
+  canAccessRecordings          Boolean      @default(true)
+  canAccessCommunity           Boolean      @default(true)
+
+  updatedAt                    DateTime     @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Platform settings (Admin > Settings: General, Email/SMTP, Security)
+// ---------------------------------------------------------------------------
+
+/**
+ * Single-row table — the platform has exactly one settings record, created lazily on first read.
+ */
+model PlatformSetting {
+  id String @id @default(cuid())
+
+  // General
+  platformName    String  @default("incrito LMS")
+  maintenanceMode Boolean @default(false)
+
+  // Support contact info (managed via Admin > Settings > Support)
+  supportEmail     String?
+  supportPhone     String?
+  supportCallStart String?
+  supportCallEnd   String?
+  supportFaqs      Json?
+
+  // Email / SMTP
+  smtpHost      String?
+  smtpPort      Int?
+  smtpUsername  String?
+  smtpPassword  String?
+  smtpFromName  String?
+  smtpFromEmail String?
+  smtpSecure    Boolean @default(true)
+
+  // Security
+  sessionTimeoutMinutes Int     @default(60)
+  maxLoginAttempts      Int     @default(5)
+  enforceTwoFactor      Boolean @default(false)
+  maxDevicesPerUser     Int     @default(5)
+
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// WhatsApp API (Admin > Settings > WhatsApp API Settings)
+// ---------------------------------------------------------------------------
+
+/**
+ * Single-row table, same lazy-singleton pattern as PlatformSetting.
+ */
+model WhatsAppSetting {
+  id String @id @default(cuid())
+
+  // Configuration
+  enabled            Boolean @default(false)
+  apiProvider        String  @default("meta_cloud_api")
+  phoneNumberId      String?
+  businessAccountId  String?
+  accessToken        String?
+  webhookVerifyToken String?
+
+  // Notifications — which platform events trigger a WhatsApp message
+  classReminderEnabled     Boolean @default(false)
+  deadlineReminderEnabled  Boolean @default(false)
+  enrollmentEnabled        Boolean @default(false)
+  announcementEnabled      Boolean @default(false)
+  certificateIssuedEnabled Boolean @default(false)
+
+  updatedAt DateTime @updatedAt
+}
+
+enum WhatsAppTemplateStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum WhatsAppMessageType {
+  TEXT
+  MEDIA
+  DOCUMENT
+}
+
+/**
+ * Message templates registered with the WhatsApp Business API (Meta requires pre-approval for most categories).
+ */
+model WhatsAppTemplate {
+  id             String                 @id @default(cuid())
+  name           String                 @unique
+  category       String
+  language       String                 @default("en")
+  messageType    WhatsAppMessageType    @default(TEXT)
+  bodyText       String
+  sampleMediaUrl String?
+  status         WhatsAppTemplateStatus @default(DRAFT)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// AWS S3 storage configuration (Admin > Settings > Storage)
+// ---------------------------------------------------------------------------
+
+/**
+ * Single-row table — the platform has exactly one S3 configuration.  Credentials stored here take
+ * precedence over the AWS_* env vars at request time so that an admin can update them through the
+ * UI without restarting the server. `awsSecretKey` is redacted on every GET response (replaced by
+ * an `awsSecretKeySet` boolean), same pattern as `smtpPassword` in PlatformSetting.
+ */
+model StorageSetting {
+  id             String   @id @default(cuid())
+  awsRegion      String?
+  awsBucket      String?
+  awsAccessKeyId String?
+  awsSecretKey   String?
+  updatedAt      DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Zoho Meeting org-level OAuth app (Admin > Settings > Zoho Settings)
+// ---------------------------------------------------------------------------
+
+/**
+ * Org-wide Zoho OAuth app credentials — set once by an Admin, used as the base app for every
+ * user's personal "Connect with Zoho" flow. `clientSecret` is redacted on GET responses.
+ * Defaults pre-filled with the India datacenter domains (confirmed as the correct DC for this
+ * deployment by live testing — see library-docs.md § Zoho Meeting API).
+ */
+model ZohoOrgSetting {
+  id             String   @id @default(cuid())
+  clientId       String?
+  clientSecret   String?
+  accountsDomain String   @default("https://accounts.zoho.in")
+  apiDomain      String   @default("https://meeting.zoho.in")
+  updatedAt      DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Chat (DB-backed, polling — no websockets, per the approved architecture decision)
+// ---------------------------------------------------------------------------
+
+/**
+ * 1:1 direct messages only — no group/cohort chat. `dmKey` is the two participant userIds sorted
+ * and joined with "_", giving an O(1) unique lookup for "find or create the conversation between
+ * these two people" instead of scanning ConversationParticipant for an intersection.
+ */
+model Conversation {
+  id        String   @id @default(cuid())
+  dmKey     String   @unique
+  createdAt DateTime @default(now())
+
+  participants ConversationParticipant[]
+  messages     ChatMessage[]
+}
+
+model ConversationParticipant {
+  conversationId String
+  userId         String
+  lastReadAt     DateTime?
+  joinedAt       DateTime  @default(now())
+  /**
+   * Per-user pin, not shared with the other participant — pinning a conversation only changes
+   * how it sorts in *your* own chat sidebar.
+   */
+  pinned         Boolean   @default(false)
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, userId])
+}
+
+model ChatMessage {
+  id             String   @id @default(cuid())
+  conversationId String
+  senderId       String
+  /**
+   * Optional now — a message can be attachment/voice-note-only with no typed text.
+   */
+  content        String?
+  /**
+   * A single optional attached file — also how voice notes are represented (attachmentType "AUDIO").
+   */
+  attachmentUrl  String?
+  attachmentType String?
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation(fields: [senderId], references: [id])
+  reactions    Reaction[]
+
+  @@index([conversationId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Mentor 1:1 Availability & Booking
+// ---------------------------------------------------------------------------
+
+model MentorAvailability {
+  id         String @id @default(cuid())
+  mentorId   String
+  dayOfWeek  Int    // 0 = Sunday … 6 = Saturday
+  startTime  String // "09:00" (HH:mm, local time)
+  endTime    String // "10:00"
+  createdAt  DateTime @default(now())
+
+  mentor User @relation("MentorAvailability", fields: [mentorId], references: [id], onDelete: Cascade)
+
+  @@index([mentorId])
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+model MentorBooking {
+  id              String        @id @default(cuid())
+  mentorId        String
+  studentId       String
+  cohortId        String?
+  scheduledAt     DateTime
+  durationMinutes Int           @default(30)
+  status          BookingStatus @default(PENDING)
+  topic           String?
+  notes           String?
+  meetingUrl      String?
+  cancelReason    String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  mentor  User   @relation("MentorBookings",  fields: [mentorId],  references: [id])
+  student User   @relation("StudentBookings", fields: [studentId], references: [id])
+  cohort  Cohort? @relation(fields: [cohortId], references: [id])
+  rating  MentorRating?
+
+  @@index([mentorId])
+  @@index([studentId])
+}
+
+// ---------------------------------------------------------------------------
+// Mentor Ratings & Feedback
+// ---------------------------------------------------------------------------
+
+model MentorRating {
+  id        String   @id @default(cuid())
+  mentorId  String
+  studentId String
+  bookingId String?  @unique
+  rating    Int      // 1–5
+  comment   String?
+  createdAt DateTime @default(now())
+
+  mentor  User          @relation("RatingReceiver", fields: [mentorId],  references: [id])
+  student User          @relation("RatingGiver",    fields: [studentId], references: [id])
+  booking MentorBooking? @relation(fields: [bookingId], references: [id])
+
+  @@unique([mentorId, studentId, bookingId])
+  @@index([mentorId])
+}
+
+// ---------------------------------------------------------------------------
+// WebRTC 1:1 Call Sessions (polling-based signaling)
+// ---------------------------------------------------------------------------
+
+enum CallType {
+  AUDIO
+  VIDEO
+}
+
+enum CallStatus {
+  RINGING
+  ACTIVE
+  ENDED
+  MISSED
+  DECLINED
+}
+
+model CallSession {
+  id        String     @id @default(cuid())
+  callerId  String
+  calleeId  String
+  callType  CallType
+  status    CallStatus @default(RINGING)
+  offerSdp  String?    @db.Text
+  answerSdp String?    @db.Text
+  // Array of { from: string, candidate: RTCIceCandidateInit } objects
+  iceCandidates Json   @default("[]")
+  startedAt DateTime?
+  endedAt   DateTime?
+  createdAt DateTime   @default(now())
+
+  caller User @relation("CallInitiator", fields: [callerId], references: [id])
+  callee User @relation("CallReceiver",  fields: [calleeId], references: [id])
+
+  @@index([calleeId, status])
+  @@index([callerId, createdAt])
+}

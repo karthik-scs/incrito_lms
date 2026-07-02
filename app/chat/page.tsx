@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowLeft,
   Crown,
   FileText,
   Lock,
@@ -165,52 +166,54 @@ function ConversationRow({
   // the gold badge is reserved for flagging that a Mentor pairing is currently *locked* (plan
   // downgraded since the conversation was created), not as a permanent "you have premium" tag.
   const isLockedPremiumPairing = isPremiumPairing(myRole, conversation.otherUser.role.name) && !conversation.canMessage;
+  const lastMsg = conversation.lastMessage
+    ? conversation.lastMessage.content ?? (conversation.lastMessage.attachmentType === "AUDIO" ? "🎤 Voice note" : "📎 Attachment")
+    : conversation.otherUser.role.name;
+
   return (
     <div
-      className={`group w-full text-left px-4 py-3 border-b border-border-light flex items-center gap-2.5 ${
+      className={`group w-full text-left mx-0 my-0.5 rounded-xl flex items-center gap-3 px-3 py-3 transition-colors ${
         active ? "bg-accent-light" : "hover:bg-surface-secondary"
       }`}
     >
-      <button onClick={onSelect} className="flex items-center gap-2.5 flex-1 min-w-0 text-left">
-        <Avatar
-          name={`${conversation.otherUser.firstName} ${conversation.otherUser.lastName}`}
-          avatarUrl={conversation.otherUser.avatarUrl}
-          size={36}
-        />
+      <button onClick={onSelect} className="flex items-center gap-3 flex-1 min-w-0 text-left">
+        <div className="relative shrink-0">
+          <Avatar
+            name={`${conversation.otherUser.firstName} ${conversation.otherUser.lastName}`}
+            avatarUrl={conversation.otherUser.avatarUrl}
+            size={48}
+          />
+        </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <p className="text-sm font-medium text-text-primary truncate">
+            <p className="text-sm font-semibold text-text-primary truncate">
               {conversation.otherUser.firstName} {conversation.otherUser.lastName}
             </p>
             {isLockedPremiumPairing && (
               <Badge variant="premium" size="sm">
                 <Crown size={10} className="mr-0.5 inline" />
-                Premium
               </Badge>
             )}
           </div>
-          <p className="text-xs text-text-muted truncate">
-            {conversation.lastMessage
-              ? conversation.lastMessage.content ?? (conversation.lastMessage.attachmentType === "AUDIO" ? "Voice note" : "Attachment")
-              : conversation.otherUser.role.name}
-          </p>
+          <p className="text-xs text-text-muted truncate mt-0.5">{lastMsg}</p>
         </div>
       </button>
-      <div className="flex flex-col items-end gap-1 shrink-0">
-        {conversation.unreadCount > 0 && (
-          <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-accent text-accent-foreground text-[10px] font-semibold">
-            {conversation.unreadCount}
+      <div className="flex flex-col items-end gap-1.5 shrink-0">
+        {conversation.unreadCount > 0 ? (
+          <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-accent text-accent-foreground text-[11px] font-bold">
+            {conversation.unreadCount > 9 ? "9+" : String(conversation.unreadCount).padStart(2, "0")}
           </span>
+        ) : (
+          <button
+            onClick={onTogglePin}
+            aria-label={conversation.pinned ? "Unpin conversation" : "Pin conversation"}
+            className={`p-1 rounded-md transition-opacity ${
+              conversation.pinned ? "text-accent opacity-100" : "text-text-muted opacity-0 group-hover:opacity-100 hover:text-accent"
+            }`}
+          >
+            <Pin size={13} fill={conversation.pinned ? "currentColor" : "none"} />
+          </button>
         )}
-        <button
-          onClick={onTogglePin}
-          aria-label={conversation.pinned ? "Unpin conversation" : "Pin conversation"}
-          className={`p-1 rounded-md transition-opacity ${
-            conversation.pinned ? "text-accent opacity-100" : "text-text-muted opacity-0 group-hover:opacity-100 hover:text-accent"
-          }`}
-        >
-          <Pin size={13} fill={conversation.pinned ? "currentColor" : "none"} />
-        </button>
       </div>
     </div>
   );
@@ -230,6 +233,7 @@ export default function ChatPage() {
 
   const [filterTab, setFilterTab] = useState<FilterTab>("all");
   const [search, setSearch] = useState("");
+  const [mobileView, setMobileView] = useState<"list" | "thread">("list");
 
   const [newChatOpen, setNewChatOpen] = useState(false);
   const [contacts, setContacts] = useState<Contacts>({ admins: [], managers: [], mentors: [], students: [] });
@@ -410,29 +414,43 @@ export default function ChatPage() {
   // rules don't change after a conversation already exists, so don't block typing over them.
   const composerLocked = showCallButtons && activeConversation ? !activeConversation.canMessage : false;
 
+  function selectConversation(id: string) {
+    setActiveConversationId(id);
+    setMobileView("thread");
+  }
+
   return (
     <AdminLayout>
-      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4 h-[calc(100vh-120px)]">
-        {/* Left: conversation list */}
-        <div className="bg-surface border border-border rounded-2xl flex flex-col overflow-hidden">
-          <div className="px-4 py-3.5 border-b border-border flex items-center justify-between">
-            <h1 className="text-lg font-semibold text-text-primary">Chat</h1>
+      {/* Mobile: full-height single-panel view; Desktop: side-by-side */}
+      <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-0 lg:gap-4 h-[calc(100vh-120px)]">
+
+        {/* ── Conversation list ── */}
+        <div className={`bg-surface border border-border rounded-2xl flex flex-col overflow-hidden ${
+          mobileView === "thread" ? "hidden lg:flex" : "flex"
+        }`}>
+          {/* Header */}
+          <div className="px-4 py-4 border-b border-border flex items-center justify-between">
+            <h1 className="text-xl font-bold text-text-primary flex items-center gap-2">
+              Chat
+              <span className="text-text-muted text-base">💬</span>
+            </h1>
             <button
               onClick={openNewChat}
               aria-label="New chat"
-              className="flex items-center justify-center w-8 h-8 rounded-md bg-accent text-accent-foreground hover:bg-accent-dark transition-colors"
+              className="flex items-center justify-center w-9 h-9 rounded-full bg-accent text-accent-foreground hover:bg-accent-dark transition-colors shadow-sm"
             >
-              <Plus size={16} />
+              <Plus size={18} />
             </button>
           </div>
 
-          <div className="px-3 pt-3 flex items-center gap-1.5 flex-wrap">
+          {/* Filter tabs */}
+          <div className="px-4 pt-3 flex items-center gap-2">
             {FILTER_TABS.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setFilterTab(tab.key)}
-                className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                  filterTab === tab.key ? "bg-accent-light text-accent" : "bg-surface-secondary text-text-secondary hover:text-text-primary"
+                className={`px-4 py-1.5 text-sm font-medium rounded-full transition-colors ${
+                  filterTab === tab.key ? "bg-accent text-accent-foreground" : "bg-surface-secondary text-text-secondary hover:text-text-primary"
                 }`}
               >
                 {tab.label}
@@ -440,49 +458,51 @@ export default function ChatPage() {
             ))}
           </div>
 
-          <div className="px-3 pt-3 pb-2">
+          {/* Search */}
+          <div className="px-4 pt-3 pb-2">
             <div className="relative">
-              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search conversations…"
-                className="w-full bg-surface-secondary border border-border rounded-md pl-8 pr-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
+                className="w-full bg-surface-secondary border-0 rounded-xl pl-9 pr-3 py-2.5 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
               />
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto">
+          {/* List */}
+          <div className="flex-1 overflow-y-auto px-2 pb-2">
             {loading && <p className="text-sm text-text-secondary p-4">Loading…</p>}
             {!loading && filteredConversations.length === 0 && (
               <p className="text-sm text-text-muted p-4">
-                {conversations.length === 0 ? 'No conversations yet — start one with "New Chat."' : "No conversations match this filter."}
+                {conversations.length === 0 ? 'No conversations yet — tap + to start one.' : "No conversations match this filter."}
               </p>
             )}
 
             {pinnedConversations.length > 0 && (
-              <p className="px-4 pt-3 pb-1 text-xs font-semibold text-text-muted uppercase tracking-wide">Pinned</p>
+              <p className="px-3 pt-3 pb-1 text-xs font-semibold text-text-muted uppercase tracking-wide">Pinned</p>
             )}
             {pinnedConversations.map((conversation) => (
               <ConversationRow
                 key={conversation.id}
                 conversation={conversation}
                 active={conversation.id === activeConversationId}
-                onSelect={() => setActiveConversationId(conversation.id)}
+                onSelect={() => selectConversation(conversation.id)}
                 onTogglePin={() => handleTogglePin(conversation)}
                 myRole={user?.role}
               />
             ))}
 
             {recentConversations.length > 0 && pinnedConversations.length > 0 && (
-              <p className="px-4 pt-3 pb-1 text-xs font-semibold text-text-muted uppercase tracking-wide">Recent</p>
+              <p className="px-3 pt-3 pb-1 text-xs font-semibold text-text-muted uppercase tracking-wide">Recent</p>
             )}
             {recentConversations.map((conversation) => (
               <ConversationRow
                 key={conversation.id}
                 conversation={conversation}
                 active={conversation.id === activeConversationId}
-                onSelect={() => setActiveConversationId(conversation.id)}
+                onSelect={() => selectConversation(conversation.id)}
                 onTogglePin={() => handleTogglePin(conversation)}
                 myRole={user?.role}
               />
@@ -490,26 +510,37 @@ export default function ChatPage() {
           </div>
         </div>
 
-        {/* Middle: active thread */}
-        <div className="bg-surface border border-border rounded-2xl flex flex-col overflow-hidden">
+        {/* ── Active thread ── */}
+        <div className={`bg-surface border border-border rounded-2xl flex flex-col overflow-hidden ${
+          mobileView === "list" ? "hidden lg:flex" : "flex"
+        }`}>
           {!activeConversation ? (
             <div className="flex-1 flex items-center justify-center text-sm text-text-muted">Select a conversation</div>
           ) : (
             <>
-              <div className="px-4 py-3 border-b border-border flex items-center gap-2.5">
+              {/* Thread header */}
+              <div className="px-4 py-3 border-b border-border flex items-center gap-3">
+                {/* Back button — mobile only */}
+                <button
+                  onClick={() => setMobileView("list")}
+                  aria-label="Back to conversations"
+                  className="lg:hidden shrink-0 p-1.5 rounded-md text-text-muted hover:bg-surface-secondary hover:text-text-primary transition-colors"
+                >
+                  <ArrowLeft size={20} />
+                </button>
                 <Avatar
                   name={`${activeConversation.otherUser.firstName} ${activeConversation.otherUser.lastName}`}
                   avatarUrl={activeConversation.otherUser.avatarUrl}
-                  size={36}
+                  size={40}
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-text-primary truncate">
+                  <p className="text-base font-semibold text-text-primary truncate">
                     {activeConversation.otherUser.firstName} {activeConversation.otherUser.lastName}
                   </p>
                   <p className="text-xs text-text-muted">{activeConversation.otherUser.role.name}</p>
                 </div>
                 {showCallButtons && (
-                  <div className="flex items-center gap-1 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0">
                     <Tooltip label={composerLocked ? "Upgrade to Intensive Pro to unlock calls" : "Start a video call"}>
                       <button
                         onClick={() => {
@@ -519,9 +550,9 @@ export default function ChatPage() {
                         }}
                         disabled={composerLocked}
                         aria-label="Video call"
-                        className="flex items-center justify-center w-10 h-10 rounded-md bg-accent text-accent-foreground hover:bg-accent-dark transition-colors disabled:bg-surface-secondary disabled:text-text-muted disabled:cursor-not-allowed"
+                        className="flex items-center justify-center w-9 h-9 rounded-full bg-surface-secondary text-text-primary hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                       >
-                        <Video size={20} />
+                        <Video size={18} />
                       </button>
                     </Tooltip>
                     <Tooltip label={composerLocked ? "Upgrade to Intensive Pro to unlock calls" : "Start an audio call"}>
@@ -533,31 +564,39 @@ export default function ChatPage() {
                         }}
                         disabled={composerLocked}
                         aria-label="Audio call"
-                        className="flex items-center justify-center w-10 h-10 rounded-md bg-accent text-accent-foreground hover:bg-accent-dark transition-colors disabled:bg-surface-secondary disabled:text-text-muted disabled:cursor-not-allowed"
+                        className="flex items-center justify-center w-9 h-9 rounded-full bg-surface-secondary text-text-primary hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                       >
-                        <Phone size={20} />
+                        <Phone size={18} />
                       </button>
                     </Tooltip>
                   </div>
                 )}
               </div>
 
-              <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-3">
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
                 {messages.map((message) => {
                   const isMine = message.sender.id === user?.id;
                   return (
                     <div key={message.id} className={`flex items-end gap-2 ${isMine ? "flex-row-reverse" : ""}`}>
-                      <Avatar name={`${message.sender.firstName} ${message.sender.lastName}`} avatarUrl={message.sender.avatarUrl} size={28} />
-                      <div className={`max-w-xs ${isMine ? "items-end" : "items-start"} flex flex-col`}>
-                        {!isMine && <p className="text-xs text-text-muted mb-0.5">{message.sender.firstName}</p>}
+                      <Avatar name={`${message.sender.firstName} ${message.sender.lastName}`} avatarUrl={message.sender.avatarUrl} size={32} />
+                      <div className={`max-w-[72%] ${isMine ? "items-end" : "items-start"} flex flex-col gap-0.5`}>
+                        {!isMine && (
+                          <p className="text-xs text-text-muted px-1 mb-0.5">{message.sender.firstName}</p>
+                        )}
                         <div
-                          className={`rounded-2xl px-3 py-2 text-sm flex flex-col gap-1.5 ${
-                            isMine ? "bg-accent text-accent-foreground" : "bg-surface-secondary text-text-primary"
+                          className={`rounded-2xl px-4 py-2.5 text-sm flex flex-col gap-1.5 ${
+                            isMine
+                              ? "bg-accent text-accent-foreground rounded-br-sm"
+                              : "bg-surface-secondary text-text-primary rounded-bl-sm"
                           }`}
                         >
-                          {message.content && <span>{message.content}</span>}
+                          {message.content && <span className="leading-relaxed">{message.content}</span>}
                           {message.attachmentUrl && <MessageAttachment url={message.attachmentUrl} type={message.attachmentType} />}
                         </div>
+                        <p className={`text-[10px] text-text-muted px-1 ${isMine ? "text-right" : "text-left"}`}>
+                          {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </p>
                         <MessageReactionBar reactions={message.reactions} userId={user?.id} onReact={(emoji) => handleReact(message.id, emoji)} />
                       </div>
                     </div>
@@ -566,18 +605,19 @@ export default function ChatPage() {
                 <div ref={bottomRef} />
               </div>
 
+              {/* Composer */}
               <div className="px-4 py-3 border-t border-border flex flex-col gap-2">
                 {composerLocked && (
-                  <p className="text-xs text-text-muted bg-surface-secondary rounded-md px-3 py-2">
+                  <p className="text-xs text-text-muted bg-surface-secondary rounded-xl px-3 py-2">
                     {user?.role === "Student"
-                      ? "Messaging your mentor needs an Intensive Pro plan — upgrade to continue this conversation."
+                      ? "Messaging your mentor needs an Intensive Pro plan — upgrade to continue."
                       : "This student's plan no longer includes mentor messaging."}
                   </p>
                 )}
                 {uploadError && <p className="text-xs text-error">{uploadError}</p>}
                 {pendingAttachment && (
                   <div className="flex items-center gap-2">
-                    <span className="flex items-center gap-1.5 text-xs text-text-secondary bg-surface-secondary border border-border rounded-md px-2.5 py-1.5">
+                    <span className="flex items-center gap-1.5 text-xs text-text-secondary bg-surface-secondary border border-border rounded-lg px-2.5 py-1.5">
                       <FileText size={13} />
                       {pendingAttachment.fileType === "AUDIO" ? "Voice note ready" : "File attached"}
                     </span>
@@ -586,39 +626,39 @@ export default function ChatPage() {
                     </button>
                   </div>
                 )}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 bg-surface-secondary rounded-2xl px-3 py-2">
                   <input ref={fileInputRef} type="file" onChange={handleFileChange} className="hidden" />
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     disabled={uploading || recording || composerLocked}
                     aria-label="Attach file"
-                    className="flex items-center justify-center w-9 h-9 rounded-md text-text-secondary hover:bg-surface-secondary transition-colors shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="shrink-0 p-1.5 rounded-full text-text-muted hover:text-text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    <Paperclip size={16} />
+                    <Paperclip size={18} />
                   </button>
                   <button
                     onClick={recording ? stopRecording : startRecording}
                     disabled={uploading || composerLocked}
                     aria-label={recording ? "Stop recording" : "Record voice note"}
-                    className={`flex items-center justify-center w-9 h-9 rounded-md transition-colors shrink-0 disabled:opacity-40 disabled:cursor-not-allowed ${
-                      recording ? "bg-error text-error-foreground animate-pulse" : "text-text-secondary hover:bg-surface-secondary"
+                    className={`shrink-0 p-1.5 rounded-full transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                      recording ? "text-error animate-pulse" : "text-text-muted hover:text-text-primary"
                     }`}
                   >
-                    {recording ? <Square size={14} /> : <Mic size={16} />}
+                    {recording ? <Square size={16} /> : <Mic size={18} />}
                   </button>
                   <input
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                    placeholder={composerLocked ? "Messaging is locked for this conversation" : recording ? "Recording…" : "Type a message…"}
+                    placeholder={composerLocked ? "Messaging locked" : recording ? "Recording…" : "Type a message…"}
                     disabled={recording || composerLocked}
-                    className="flex-1 bg-surface border border-border rounded-md px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent disabled:opacity-60"
+                    className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted focus:outline-none disabled:opacity-60"
                   />
                   <button
                     onClick={handleSend}
-                    disabled={uploading || recording || composerLocked}
+                    disabled={uploading || recording || composerLocked || (!draft.trim() && !pendingAttachment)}
                     aria-label="Send"
-                    className="flex items-center justify-center w-9 h-9 rounded-md bg-accent text-accent-foreground hover:bg-accent-dark transition-colors disabled:opacity-60"
+                    className="shrink-0 flex items-center justify-center w-9 h-9 rounded-full bg-accent text-accent-foreground hover:bg-accent-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Send size={16} />
                   </button>

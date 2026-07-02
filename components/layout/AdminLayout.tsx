@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar, type SidebarRole } from "./Sidebar";
+import { MobileBottomNav } from "./MobileBottomNav";
 import { DashboardTopbar } from "@/components/dashboard/DashboardTopbar";
 import { useAuth } from "@/components/providers/AuthProvider";
 
@@ -21,6 +22,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     setCollapsed(localStorage.getItem(COLLAPSE_STORAGE_KEY) === "true");
@@ -49,6 +51,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="h-screen flex overflow-hidden">
+      {/* Desktop sidebar */}
       <Sidebar
         role={role}
         userName={userName}
@@ -57,10 +60,39 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
         onToggleCollapse={toggleCollapse}
       />
 
+      {/* Mobile drawer backdrop */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      {/* Mobile drawer */}
+      <div
+        className={`fixed inset-y-0 left-0 z-50 lg:hidden transition-transform duration-200 ${
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <Sidebar
+          role={role}
+          userName={userName}
+          avatarUrl={user.avatarUrl}
+          collapsed={false}
+          mobileOpen={mobileOpen}
+          onNavClick={() => setMobileOpen(false)}
+        />
+      </div>
+
       <div className="flex-1 flex flex-col min-w-0">
         <DashboardTopbar userName={userName} role={role} avatarUrl={user.avatarUrl} />
-        <main className="flex-1 overflow-y-auto px-8 py-6">{children}</main>
+        <main className="flex-1 overflow-y-auto px-4 py-4 lg:px-8 lg:py-6 pb-20 lg:pb-6">{children}</main>
       </div>
+
+      <MobileBottomNav
+        onOpenMenu={() => setMobileOpen(true)}
+        role={role}
+      />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BookOpen, Coins, Globe, MessageSquare, Search, Settings, Users as UsersIcon } from "lucide-react";
@@ -9,6 +10,7 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { apiJson } from "@/lib/authClient";
 import { NotificationDropdown } from "./NotificationDropdown";
 import { ProfileMenu } from "./ProfileMenu";
+import favicon from "@/app/assets/incrito_favicon.jpg";
 
 type SearchResults = {
   courses: { id: string; title: string; slug: string; status: string }[];
@@ -73,8 +75,13 @@ export function DashboardTopbar({
   const hasResults = results.courses.length > 0 || results.users.length > 0 || results.communities.length > 0;
 
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-border bg-surface px-8 py-3">
-      <div ref={searchBoxRef} className="relative flex-1 max-w-md">
+    <div className="flex items-center gap-3 border-b border-border bg-surface px-4 lg:px-8 py-3">
+      {/* Mobile: logo icon */}
+      <div className="lg:hidden shrink-0">
+        <Image src={favicon} alt="incrito" width={32} height={32} className="rounded-md" />
+      </div>
+
+      <div ref={searchBoxRef} className="relative flex-1 lg:max-w-md">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
         <input
           type="search"
@@ -140,7 +147,13 @@ export function DashboardTopbar({
         )}
       </div>
 
-      <div className="flex items-center gap-2">
+      {/* Mobile: only theme toggle */}
+      <div className="lg:hidden shrink-0">
+        <ThemeToggle />
+      </div>
+
+      {/* Desktop: full icon row — ml-auto pushes it to the far right */}
+      <div className="hidden lg:flex items-center gap-2 ml-auto">
         {role === "Student" && totalPoints !== null && (
           <Tooltip label="Total Incrito Points earned across all your courses and cohorts">
             <span className="flex items-center gap-1.5 bg-accent-light text-accent rounded-full px-3 py-1.5 text-xs font-semibold">

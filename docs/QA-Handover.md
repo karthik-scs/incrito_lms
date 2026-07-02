@@ -238,6 +238,6 @@ Tested on Chrome (latest). Firefox and Safari should work but have not been form
 
 | Role | Contact |
 |---|---|
-| Developer | karthikkummi25@gmail.com |
+| CTO | karthik@shresthacloudsolutions.com |
 | Platform URL | https://learn.incrito.com |
 | GitHub | https://github.com/karthik-scs/incrito_lms |

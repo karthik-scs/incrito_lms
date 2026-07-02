@@ -22,6 +22,7 @@ import {
   Settings,
   Users,
   Video,
+  X,
 } from "lucide-react";
 import { Logo } from "./Logo";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -80,30 +81,42 @@ export function Sidebar({
   avatarUrl,
   collapsed = false,
   onToggleCollapse,
+  onNavClick,
+  mobileOpen = false,
 }: {
   role: SidebarRole;
   userName: string;
   avatarUrl?: string | null;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
+  onNavClick?: () => void;
+  mobileOpen?: boolean;
 }) {
   const pathname = usePathname();
   const items = NAV_ITEMS[role];
 
   return (
     <aside
-      className={`hidden lg:flex flex-col h-screen shrink-0 border-r border-border bg-surface py-6 ${
+      className={`flex flex-col h-screen shrink-0 border-r border-border bg-surface py-6 ${
         collapsed ? "w-20 px-2" : "w-64 px-4"
-      }`}
+      } ${mobileOpen ? "flex" : "hidden lg:flex"}`}
     >
-      {/* Logo stays perfectly centered (collapsed) so it lines up with the centered nav icons and
-          avatar below — the toggle button floats on top via absolute positioning instead of
-          sharing the flex row, so it can't pull the logo off-center. */}
       <div className={`relative flex items-center ${collapsed ? "justify-center" : "justify-between"}`}>
         {collapsed ? (
-          <Image src={favicon} alt="incrito" width={40 } height={40} className="rounded-md" />
+          <Image src={favicon} alt="incrito" width={40} height={40} className="rounded-md" />
         ) : (
           <Logo height={26} />
+        )}
+        {/* Mobile close button — only visible when sidebar is open as a drawer */}
+        {mobileOpen && onNavClick && (
+          <button
+            type="button"
+            onClick={onNavClick}
+            aria-label="Close menu"
+            className="lg:hidden shrink-0 p-1.5 rounded-md text-text-muted hover:bg-surface-secondary hover:text-text-primary transition-colors"
+          >
+            <X size={18} />
+          </button>
         )}
         {onToggleCollapse && (
           <button
@@ -128,6 +141,7 @@ export function Sidebar({
           const link = (
             <Link
               href={item.href}
+              onClick={onNavClick}
               className={`flex items-center rounded-md text-sm font-medium transition-colors ${
                 collapsed ? "px-3 py-2.5" : "gap-3 px-3 py-2"
               } ${isActive ? "bg-accent-light text-accent" : "text-text-dark hover:bg-surface-secondary"}`}
@@ -153,6 +167,7 @@ export function Sidebar({
           <Tooltip label="Support" side="right" className="w-full justify-center">
             <Link
               href="/support"
+              onClick={onNavClick}
               className={`flex items-center rounded-md text-sm font-medium transition-colors px-3 py-2.5 ${
                 pathname === "/support" ? "bg-accent-light text-accent" : "text-text-dark hover:bg-surface-secondary"
               }`}
@@ -163,6 +178,7 @@ export function Sidebar({
         ) : (
           <Link
             href="/support"
+            onClick={onNavClick}
             className={`flex items-center gap-3 rounded-md text-sm font-medium transition-colors px-3 py-2 ${
               pathname === "/support" ? "bg-accent-light text-accent" : "text-text-dark hover:bg-surface-secondary"
             }`}

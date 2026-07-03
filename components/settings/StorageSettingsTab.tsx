@@ -95,18 +95,18 @@ export function StorageSettingsTab() {
           </div>
 
           <div>
-            <label className="text-sm font-medium text-text-secondary">AWS Region</label>
+            <label className="text-sm font-medium text-text-secondary">Region</label>
             <input value={awsRegion} onChange={(e) => setAwsRegion(e.target.value)} placeholder="e.g. ap-south-1" className={inputClass} />
           </div>
 
           <div>
-            <label className="text-sm font-medium text-text-secondary">S3 Bucket name</label>
+            <label className="text-sm font-medium text-text-secondary">Bucket name</label>
             <input value={awsBucket} onChange={(e) => setAwsBucket(e.target.value)} placeholder="my-incrito-media" className={inputClass} />
           </div>
 
           <div>
             <label className="text-sm font-medium text-text-secondary">Access Key ID</label>
-            <input value={awsAccessKeyId} onChange={(e) => setAwsAccessKeyId(e.target.value)} placeholder="AKIA..." className={inputClass} />
+            <input value={awsAccessKeyId} onChange={(e) => setAwsAccessKeyId(e.target.value)} placeholder="Access key ID" className={inputClass} />
           </div>
 
           <div>

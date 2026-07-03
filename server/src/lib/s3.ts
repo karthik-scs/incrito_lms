@@ -47,6 +47,14 @@ export function invalidateS3Cache() {
   configCache = null;
 }
 
+/** Extracts the S3 key from a stored file URL (`${PUBLIC_API_URL}/api/files/<key>`). Returns null for external/non-S3 URLs. */
+export function keyFromUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const marker = "/api/files/";
+  const idx = url.indexOf(marker);
+  return idx !== -1 ? url.slice(idx + marker.length) : null;
+}
+
 /** Consistent, collision-proof key naming per content type — mirrors the old local-disk folder layout. */
 export function buildS3Key(folder: string, ownerId: string, originalExt: string) {
   return `${folder}/${ownerId}-${Date.now()}-${randomUUID()}${originalExt}`;

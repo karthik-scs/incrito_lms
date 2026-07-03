@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 import { env } from "../config/env";
 import { success } from "../utils/apiResponse";
 import { AppError } from "../utils/AppError";
-import { uploadObject, buildS3Key } from "../lib/s3";
+import { uploadObject, buildS3Key, deleteObject, keyFromUrl } from "../lib/s3";
 import { extensionFor } from "../lib/uploads";
 import * as authService from "../services/auth.service";
 import * as mfaService from "../services/mfa.service";
@@ -12,8 +12,11 @@ export async function uploadAvatar(req: Request, res: Response) {
   if (!req.file) {
     throw new AppError("No avatar file was uploaded", 422);
   }
+  const existing = await authService.getCurrentUser(req.user!.id);
+  const oldKey = keyFromUrl(existing?.avatarUrl);
   const key = buildS3Key("avatars", req.user!.id, extensionFor(req.file.mimetype));
   await uploadObject(key, req.file.buffer, req.file.mimetype);
+  if (oldKey) await deleteObject(oldKey);
   const avatarUrl = `${env.PUBLIC_API_URL}/api/files/${key}`;
   const user = await authService.updateAvatar(req.user!.id, avatarUrl);
   return success(res, user);

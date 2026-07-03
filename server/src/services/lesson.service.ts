@@ -3,7 +3,7 @@ import { AppError } from "../utils/AppError";
 import { createMeeting, createMeetingWithCredentials } from "../lib/zoom";
 import { createZohoMeeting } from "../lib/zoho";
 import { generateMeetingSdkSignature } from "../lib/zoomSdkSignature";
-import { buildS3Key, getPresignedPutUrl, getPresignedGetUrl } from "../lib/s3";
+import { buildS3Key, getPresignedPutUrl, getPresignedGetUrl, deleteObject, keyFromUrl } from "../lib/s3";
 import { notifyCohort } from "./notification.service";
 
 const lessonInclude = {
@@ -233,7 +233,15 @@ export async function updateLesson(
     Pick<LessonInput, "title" | "contentUrl" | "thumbnailUrl" | "content" | "durationMinutes" | "order" | "planAccess">
   >
 ) {
-  await getLesson(id);
+  const existing = await getLesson(id);
+  if (data.thumbnailUrl && data.thumbnailUrl !== existing.thumbnailUrl) {
+    const oldKey = keyFromUrl(existing.thumbnailUrl);
+    if (oldKey) await deleteObject(oldKey);
+  }
+  if (data.contentUrl && data.contentUrl !== existing.contentUrl) {
+    const oldKey = keyFromUrl(existing.contentUrl);
+    if (oldKey) await deleteObject(oldKey);
+  }
   const lesson = await prisma.lesson.update({ where: { id }, data, include: lessonInclude });
   return withComputedStatus(lesson);
 }

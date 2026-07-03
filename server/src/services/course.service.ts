@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma";
 import { AppError } from "../utils/AppError";
+import { deleteObject, keyFromUrl } from "../lib/s3";
 
 const courseInclude = {
   mentor: { select: { id: true, firstName: true, lastName: true } },
@@ -115,6 +116,11 @@ export async function updateCourse(id: string, data: Partial<Omit<CourseInput, "
 
   if (tagIds) {
     await prisma.courseTag.deleteMany({ where: { courseId: id } });
+  }
+
+  if (courseFields.thumbnailUrl && courseFields.thumbnailUrl !== course.thumbnailUrl) {
+    const oldKey = keyFromUrl(course.thumbnailUrl);
+    if (oldKey) await deleteObject(oldKey);
   }
 
   return prisma.course.update({

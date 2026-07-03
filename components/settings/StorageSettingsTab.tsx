@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { apiJson } from "@/lib/authClient";
 
 type StorageSettings = {
+  endpointUrl: string | null;
   awsRegion: string | null;
   awsBucket: string | null;
   awsAccessKeyId: string | null;
@@ -17,6 +18,7 @@ const inputClass =
   "mt-1 w-full bg-surface border border-border rounded-md px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent";
 
 export function StorageSettingsTab() {
+  const [endpointUrl, setEndpointUrl] = useState("");
   const [awsRegion, setAwsRegion] = useState("");
   const [awsBucket, setAwsBucket] = useState("");
   const [awsAccessKeyId, setAwsAccessKeyId] = useState("");
@@ -31,6 +33,7 @@ export function StorageSettingsTab() {
     setLoading(true);
     const result = await apiJson<StorageSettings>("/api/storage-settings");
     if (result.ok) {
+      setEndpointUrl(result.data.endpointUrl ?? "");
       setAwsRegion(result.data.awsRegion ?? "");
       setAwsBucket(result.data.awsBucket ?? "");
       setAwsAccessKeyId(result.data.awsAccessKeyId ?? "");
@@ -47,6 +50,7 @@ export function StorageSettingsTab() {
     setSaved(false);
     setSubmitting(true);
     const body: Record<string, string> = {};
+    if (endpointUrl) body.endpointUrl = endpointUrl;
     if (awsRegion) body.awsRegion = awsRegion;
     if (awsBucket) body.awsBucket = awsBucket;
     if (awsAccessKeyId) body.awsAccessKeyId = awsAccessKeyId;
@@ -65,7 +69,7 @@ export function StorageSettingsTab() {
     <div className="bg-surface border border-border rounded-2xl p-6 max-w-xl">
       <div className="flex items-center gap-2 mb-1">
         <HardDrive size={16} className="text-accent" />
-        <h2 className="text-base font-semibold text-text-primary">Storage (AWS S3)</h2>
+        <h2 className="text-base font-semibold text-text-primary">Storage (S3-compatible)</h2>
         {isConfigured && (
           <span className="flex items-center gap-1 text-xs text-success font-medium">
             <CheckCircle2 size={13} />
@@ -82,6 +86,14 @@ export function StorageSettingsTab() {
 
       {!loading && (
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div>
+            <label className="text-sm font-medium text-text-secondary">
+              Custom Endpoint URL
+              <span className="ml-1.5 text-xs text-text-muted font-normal">(optional — for Wasabi, Cloudflare R2, MinIO, etc.)</span>
+            </label>
+            <input value={endpointUrl} onChange={(e) => setEndpointUrl(e.target.value)} placeholder="https://s3.ap-southeast-1.wasabisys.com" className={inputClass} />
+          </div>
+
           <div>
             <label className="text-sm font-medium text-text-secondary">AWS Region</label>
             <input value={awsRegion} onChange={(e) => setAwsRegion(e.target.value)} placeholder="e.g. ap-south-1" className={inputClass} />

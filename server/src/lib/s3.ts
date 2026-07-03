@@ -36,6 +36,7 @@ async function getConfigAndClient(): Promise<{ config: S3Config; client: S3Clien
   const client = new S3Client({
     region: config.region,
     credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretKey },
+    ...(config.endpointUrl ? { endpoint: config.endpointUrl, forcePathStyle: true } : {}),
   });
   configCache = { config, expiresAt: now + CONFIG_TTL_MS, client };
   return configCache;

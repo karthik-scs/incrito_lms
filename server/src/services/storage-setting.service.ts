@@ -15,7 +15,7 @@ async function getOrCreate() {
   });
 }
 
-export type StorageConfig = { region: string; bucket: string; accessKeyId: string; secretKey: string };
+export type StorageConfig = { endpointUrl?: string; region: string; bucket: string; accessKeyId: string; secretKey: string };
 
 /** Returns the active S3 config — DB row takes precedence over env vars, env vars act as fallback. Returns null if not configured at all. */
 export async function getActiveStorageConfig(): Promise<StorageConfig | null> {
@@ -25,7 +25,7 @@ export async function getActiveStorageConfig(): Promise<StorageConfig | null> {
   const accessKeyId = row.awsAccessKeyId ?? env.AWS_ACCESS_KEY_ID;
   const secretKey = row.awsSecretKey ?? env.AWS_SECRET_ACCESS_KEY;
   if (!region || !bucket || !accessKeyId || !secretKey) return null;
-  return { region, bucket, accessKeyId, secretKey };
+  return { endpointUrl: row.endpointUrl ?? undefined, region, bucket, accessKeyId, secretKey };
 }
 
 export async function getSettings() {
@@ -35,7 +35,7 @@ export async function getSettings() {
 }
 
 export async function updateSettings(data: Partial<{
-  awsRegion: string; awsBucket: string; awsAccessKeyId: string; awsSecretKey: string;
+  endpointUrl: string; awsRegion: string; awsBucket: string; awsAccessKeyId: string; awsSecretKey: string;
 }>) {
   const row = await getOrCreate();
   const updated = await prisma.storageSetting.update({ where: { id: row.id }, data });

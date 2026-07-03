@@ -1357,6 +1357,7 @@ model WhatsAppTemplate {
  */
 model StorageSetting {
   id             String   @id @default(cuid())
+  endpointUrl    String?
   awsRegion      String?
   awsBucket      String?
   awsAccessKeyId String?

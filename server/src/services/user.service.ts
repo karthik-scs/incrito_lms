@@ -102,7 +102,7 @@ export async function deleteUser(id: string) {
   await getUser(id);
   await assertNotSuperAdmin(id);
 
-  const enrollmentCount = await prisma.enrollment.count({ where: { studentId: id } });
+  const enrollmentCount = await prisma.enrollment.count({ where: { userId: id } });
   if (enrollmentCount > 0) {
     throw new AppError(
       `This user has ${enrollmentCount} active enrolment(s). Remove them from all cohorts before deleting.`,

@@ -265,7 +265,7 @@ export default function SignupPage() {
           {fieldErrors.confirmPassword && <p className="mt-1 text-xs text-error">{fieldErrors.confirmPassword}</p>}
         </div>
 
-        {error && <p className="text-sm text-error">{error}</p>}
+        {error && <InlineAlert variant="error">{error}</InlineAlert>}
 
         <button
           type="submit"

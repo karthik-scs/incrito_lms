@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState, useRef, type FormEvent } from "react";
 import { Eye, EyeOff, Lock, Mail, ShieldCheck, Smartphone } from "lucide-react";
 import { AuthLayout } from "@/components/layout/AuthLayout";
+import { InlineAlert } from "@/components/ui/InlineAlert";
 import { markFlowEntry } from "@/lib/authFlowGuard";
 import { setAccessToken } from "@/lib/authClient";
 
@@ -281,7 +282,7 @@ export default function LoginPage() {
           </Link>
         </div>
 
-        {error && <p className="text-sm text-error">{error}</p>}
+        {error && <InlineAlert variant="error">{error}</InlineAlert>}
 
         <button
           type="submit"

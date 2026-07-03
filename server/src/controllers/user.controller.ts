@@ -31,3 +31,8 @@ export async function update(req: Request, res: Response) {
   const user = await userService.updateUser(String(req.params.id), req.body);
   return success(res, user);
 }
+
+export async function remove(req: Request, res: Response) {
+  await userService.deleteUser(String(req.params.id));
+  return success(res, null, 204);
+}

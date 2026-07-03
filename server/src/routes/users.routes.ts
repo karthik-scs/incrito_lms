@@ -38,5 +38,6 @@ router.patch(
   validate(updateUserSchema),
   asyncHandler(userController.update)
 );
+router.delete("/:id", authenticate, authorize("user:write"), asyncHandler(userController.remove));
 
 export default router;

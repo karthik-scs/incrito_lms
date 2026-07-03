@@ -98,6 +98,26 @@ export async function updateUserRole(id: string, roleId: string) {
   return prisma.user.update({ where: { id }, data: { roleId }, select: userSelect });
 }
 
+export async function deleteUser(id: string) {
+  await getUser(id);
+  await assertNotSuperAdmin(id);
+
+  const enrollmentCount = await prisma.enrollment.count({ where: { studentId: id } });
+  if (enrollmentCount > 0) {
+    throw new AppError(
+      `This user has ${enrollmentCount} active enrolment(s). Remove them from all cohorts before deleting.`,
+      409
+    );
+  }
+
+  // Delete dependent records that don't cascade automatically, then the user.
+  await prisma.session.deleteMany({ where: { userId: id } });
+  await prisma.notification.deleteMany({ where: { userId: id } });
+  await prisma.verificationCode.deleteMany({ where: { userId: id } });
+
+  await prisma.user.delete({ where: { id } });
+}
+
 export async function updateUser(
   id: string,
   data: {

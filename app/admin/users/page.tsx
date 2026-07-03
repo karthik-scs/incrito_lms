@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { Pencil, Plus } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -63,6 +63,11 @@ export default function UsersPage() {
   const [roleId, setRoleId] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // --- Delete confirmation ---
+  const [deleteUser, setDeleteUser] = useState<User | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
   // --- Edit modal ---
   const [editOpen, setEditOpen] = useState(false);
@@ -171,6 +176,20 @@ export default function UsersPage() {
     await loadAll();
   }
 
+  async function handleDelete() {
+    if (!deleteUser) return;
+    setDeleteError(null);
+    setDeleteSubmitting(true);
+    const result = await apiJson(`/api/users/${deleteUser.id}`, { method: "DELETE" });
+    setDeleteSubmitting(false);
+    if (!result.ok) {
+      setDeleteError(result.message);
+      return;
+    }
+    setDeleteUser(null);
+    await loadAll();
+  }
+
   const roleOptions = useMemo(() => roles.map((r) => ({ value: r.id, label: r.name })), [roles]);
   const roleFilterOptions = useMemo(() => roles.map((r) => ({ value: r.name, label: r.name })), [roles]);
 
@@ -249,9 +268,16 @@ export default function UsersPage() {
               header: "",
               className: "text-right",
               cell: (row) => (
-                <div className="flex items-center justify-end">
-                  <button onClick={() => openEdit(row)} aria-label="Edit user" className="text-text-muted hover:text-accent rounded-md p-1.5">
+                <div className="flex items-center justify-end gap-1">
+                  <button onClick={() => openEdit(row)} aria-label="Edit user" className="text-text-muted hover:text-accent rounded-md p-1.5 transition-colors">
                     <Pencil size={15} />
+                  </button>
+                  <button
+                    onClick={() => { setDeleteUser(row); setDeleteError(null); }}
+                    aria-label="Delete user"
+                    className="text-text-muted hover:text-error rounded-md p-1.5 transition-colors"
+                  >
+                    <Trash2 size={15} />
                   </button>
                 </div>
               ),
@@ -409,6 +435,37 @@ export default function UsersPage() {
             </Button>
           </div>
         </form>
+      </Modal>
+      {/* Delete confirmation modal */}
+      <Modal open={!!deleteUser} onClose={() => setDeleteUser(null)} title="Delete User">
+        {deleteUser && (
+          <div className="flex flex-col gap-4">
+            <p className="text-sm text-text-secondary">
+              Are you sure you want to permanently delete{" "}
+              <span className="font-semibold text-text-primary">
+                {deleteUser.firstName} {deleteUser.lastName}
+              </span>{" "}
+              ({deleteUser.email})? This action cannot be undone.
+            </p>
+            {deleteError && (
+              <p className="text-sm text-error bg-error/10 border border-error/20 rounded-md px-3 py-2">
+                {deleteError}
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setDeleteUser(null)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleDelete}
+                disabled={deleteSubmitting}
+                className="bg-error text-error-foreground hover:bg-error/90"
+              >
+                {deleteSubmitting ? "Deleting…" : "Delete User"}
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
     </AdminLayout>
   );

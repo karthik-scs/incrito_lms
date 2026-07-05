@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { success } from "../utils/apiResponse";
 import * as resourceService from "../services/resource.service";
+import { getWatermarkedPdf } from "../services/pdfWatermark.service";
 
 export async function list(req: Request, res: Response) {
   const lessonId = String(req.query.lessonId ?? "");
@@ -26,4 +27,12 @@ export async function remove(req: Request, res: Response) {
 export async function signedUrl(req: Request, res: Response) {
   const url = await resourceService.getResourceSignedUrl(String(req.params.id), req.user!.id);
   return success(res, { url });
+}
+
+export async function watermarkedPdf(req: Request, res: Response) {
+  const pdfBuffer = await getWatermarkedPdf(String(req.params.id), req.user!.id);
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", "inline");
+  res.setHeader("Cache-Control", "private, no-store");
+  res.end(pdfBuffer);
 }

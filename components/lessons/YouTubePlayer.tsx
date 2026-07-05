@@ -52,6 +52,7 @@ export function YouTubePlayer({
   const [ready, setReady] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [ended, setEnded] = useState(false);
+  const [tabHidden, setTabHidden] = useState(false);
   const [muted, setMuted] = useState(false);
   const [volume, setVolume] = useState(100);
   const [speed, setSpeed] = useState(1);
@@ -100,6 +101,17 @@ export function YouTubePlayer({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoId]);
+
+  // Pause + blur when the browser tab loses focus
+  useEffect(() => {
+    function onVisibilityChange() {
+      const isHidden = document.visibilityState === "hidden";
+      setTabHidden(isHidden);
+      if (isHidden) playerRef.current?.pauseVideo();
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
 
   useEffect(() => {
     if (!ready) return;
@@ -187,7 +199,7 @@ export function YouTubePlayer({
   const showCover = !playing;
 
   return (
-    <div ref={containerRef} className="relative rounded-2xl overflow-hidden bg-overlay-dark aspect-video group">
+    <div ref={containerRef} className="relative rounded-2xl overflow-hidden bg-overlay-dark aspect-video group" onContextMenu={(e) => e.preventDefault()}>
       {/* Crop wrapper: clips the iframe's own edges outside the visible box. */}
       <div
         className={`absolute inset-0 overflow-hidden transition-opacity duration-150 ${showCover ? "opacity-0" : "opacity-100"}`}
@@ -221,6 +233,15 @@ export function YouTubePlayer({
         onClick={togglePlay}
         className="absolute inset-0 w-full h-full"
       />
+
+      {/* Blur overlay while tab is hidden */}
+      {tabHidden && (
+        <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-20">
+          <p className="text-white text-sm font-medium select-none">
+            Playback paused — return to this tab to continue
+          </p>
+        </div>
+      )}
 
       <div className="absolute bottom-0 left-0 right-0 px-4 pb-3 pt-8 bg-gradient-to-t from-black/70 via-black/20 to-transparent opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
         <input

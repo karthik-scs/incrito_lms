@@ -184,6 +184,7 @@ export async function getCurrentUser(userId: string) {
     email: user.email,
     firstName: user.firstName,
     lastName: user.lastName,
+    mobileNumber: user.mobileNumber ?? null,
     avatarUrl: user.avatarUrl,
     role: user.role.name,
     mfaEnabled: user.mfaEnabled,

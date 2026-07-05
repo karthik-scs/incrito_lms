@@ -8,6 +8,7 @@ export type CurrentUser = {
   email: string;
   firstName: string;
   lastName: string;
+  mobileNumber: string | null;
   avatarUrl: string | null;
   role: string;
   mfaEnabled: boolean;

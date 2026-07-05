@@ -4,12 +4,15 @@ import { verifyAccessToken } from "../services/token.service";
 import { redis, REDIS_KEYS } from "../lib/redis";
 
 export async function authenticate(req: Request, _res: Response, next: NextFunction) {
+  // Primary: Authorization header. Fallback: ?token= query param (used by PDF iframe src).
   const header = req.headers.authorization;
-  if (!header?.startsWith("Bearer ")) {
+  const queryToken = typeof req.query.token === "string" ? req.query.token : null;
+
+  if (!header?.startsWith("Bearer ") && !queryToken) {
     throw new AppError("Authentication required", 401);
   }
 
-  const token = header.slice("Bearer ".length);
+  const token = header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : queryToken!;
 
   let user;
   try {

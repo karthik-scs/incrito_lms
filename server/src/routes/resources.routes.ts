@@ -25,5 +25,6 @@ router.patch(
 );
 router.delete("/:id", authenticate, authorize("course:write"), asyncHandler(resourceController.remove));
 router.get("/:id/signed-url", authenticate, asyncHandler(resourceController.signedUrl));
+router.get("/:id/watermarked-pdf", authenticate, asyncHandler(resourceController.watermarkedPdf));
 
 export default router;

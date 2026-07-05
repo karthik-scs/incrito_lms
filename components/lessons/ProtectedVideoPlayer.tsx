@@ -1,16 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { apiJson } from "@/lib/authClient";
 
 /**
- * Deterrence-level content protection, not real DRM — no web technology can fully stop someone
- * from photographing their screen or using OS-level screen capture, and this doesn't pretend to.
- * What it does: the player never receives a permanent/public file URL (only a short-lived signed
- * one, fetched on demand and refreshed before it expires), the browser's own download affordances
- * are disabled, and a watermark identifying the viewer is burned into the on-screen overlay so a
- * leak is at least traceable back to who watched it.
+ * Deterrence-level content protection:
+ * - Short-lived signed S3 URL refreshed every 8 min (raw URL never exposed)
+ * - Browser download / PiP / remote-playback affordances disabled
+ * - Moving watermark: "incrito · name · mobile" — traceable to the viewer
+ * - Auto-pause + blur when the browser tab loses focus / is hidden
+ *   (defeats screen-recording while alt-tabbing away)
  */
 
 const SIGNED_URL_REFRESH_MS = 8 * 60 * 1000;
@@ -18,10 +18,13 @@ const WATERMARK_REPOSITION_MS = 15000;
 
 export function ProtectedVideoPlayer({ fetchUrl, posterUrl }: { fetchUrl: string; posterUrl?: string | null }) {
   const { user } = useAuth();
+  const videoRef = useRef<HTMLVideoElement>(null);
   const [src, setSrc] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [hidden, setHidden] = useState(false);
   const [watermarkPos, setWatermarkPos] = useState({ top: "8%", left: "8%" });
 
+  // Signed URL fetch + refresh
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -42,12 +45,33 @@ export function ProtectedVideoPlayer({ fetchUrl, posterUrl }: { fetchUrl: string
     };
   }, [fetchUrl]);
 
+  // Pause + blur when tab is hidden; resume when visible again
+  useEffect(() => {
+    function onVisibilityChange() {
+      const isHidden = document.visibilityState === "hidden";
+      setHidden(isHidden);
+      if (isHidden) {
+        videoRef.current?.pause();
+      }
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
+
+  // Roving watermark
   useEffect(() => {
     const interval = setInterval(() => {
-      setWatermarkPos({ top: `${8 + Math.random() * 70}%`, left: `${8 + Math.random() * 70}%` });
+      setWatermarkPos({
+        top: `${8 + Math.random() * 70}%`,
+        left: `${8 + Math.random() * 70}%`,
+      });
     }, WATERMARK_REPOSITION_MS);
     return () => clearInterval(interval);
   }, []);
+
+  const watermarkText = user
+    ? `incrito · ${user.firstName} ${user.lastName}${user.mobileNumber ? ` · ${user.mobileNumber}` : ` · ${user.email}`}`
+    : "incrito";
 
   if (error) {
     return (
@@ -66,8 +90,12 @@ export function ProtectedVideoPlayer({ fetchUrl, posterUrl }: { fetchUrl: string
   }
 
   return (
-    <div className="relative rounded-2xl overflow-hidden bg-overlay-dark aspect-video" onContextMenu={(e) => e.preventDefault()}>
+    <div
+      className="relative rounded-2xl overflow-hidden bg-overlay-dark aspect-video"
+      onContextMenu={(e) => e.preventDefault()}
+    >
       <video
+        ref={videoRef}
         controls
         controlsList="nodownload noremoteplayback"
         disablePictureInPicture
@@ -79,14 +107,23 @@ export function ProtectedVideoPlayer({ fetchUrl, posterUrl }: { fetchUrl: string
       >
         Your browser doesn't support embedded video.
       </video>
-      {user && (
-        <div
-          className="absolute pointer-events-none select-none text-white/35 text-xs font-medium px-2 py-1 bg-black/10 rounded transition-all duration-1000 ease-in-out whitespace-nowrap"
-          style={{ top: watermarkPos.top, left: watermarkPos.left }}
-        >
-          {user.firstName} {user.lastName} · {user.email}
+
+      {/* Blur overlay while tab is hidden */}
+      {hidden && (
+        <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-20">
+          <p className="text-white text-sm font-medium select-none">
+            Playback paused — return to this tab to continue
+          </p>
         </div>
       )}
+
+      {/* Roving identity watermark */}
+      <div
+        className="absolute pointer-events-none select-none text-white/40 text-xs font-medium px-2 py-1 bg-black/15 rounded transition-all duration-1000 ease-in-out whitespace-nowrap z-10"
+        style={{ top: watermarkPos.top, left: watermarkPos.left }}
+      >
+        {watermarkText}
+      </div>
     </div>
   );
 }

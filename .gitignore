@@ -50,3 +50,6 @@ next-env.d.ts
 # scratch / temp scripts left by tooling
 .tmp-*.js
 .tmp-*.ts
+
+# project archive / zip exports
+*.zip

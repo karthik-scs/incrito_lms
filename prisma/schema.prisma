@@ -118,6 +118,10 @@ model User {
   callsInitiated  CallSession[] @relation("CallInitiator")
   callsReceived   CallSession[] @relation("CallReceiver")
 
+  // Group call slots (mentor) and requests (student)
+  groupCallSlots    GroupCallSlot[]    @relation("MentorGroupCallSlots")
+  groupCallRequests GroupCallRequest[] @relation("StudentGroupCallRequests")
+
   @@index([roleId])
 }
 
@@ -1546,4 +1550,55 @@ model CallSession {
 
   @@index([calleeId, status])
   @@index([callerId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Group Call Slots (mentor-created sessions with limited capacity)
+// ---------------------------------------------------------------------------
+
+enum GroupCallStatus {
+  OPEN
+  FULL
+  CANCELLED
+  COMPLETED
+}
+
+enum GroupCallRequestStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+model GroupCallSlot {
+  id              String          @id @default(cuid())
+  mentorId        String
+  scheduledAt     DateTime
+  durationMinutes Int             @default(60)
+  maxMembers      Int             @default(5)
+  topic           String?
+  meetingUrl      String?
+  status          GroupCallStatus @default(OPEN)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  mentor   User               @relation("MentorGroupCallSlots", fields: [mentorId], references: [id])
+  requests GroupCallRequest[]
+
+  @@index([mentorId])
+  @@index([scheduledAt])
+}
+
+model GroupCallRequest {
+  id        String                 @id @default(cuid())
+  slotId    String
+  studentId String
+  status    GroupCallRequestStatus @default(PENDING)
+  createdAt DateTime               @default(now())
+
+  slot    GroupCallSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  student User          @relation("StudentGroupCallRequests", fields: [studentId], references: [id])
+
+  @@unique([slotId, studentId])
+  @@index([slotId])
+  @@index([studentId])
 }

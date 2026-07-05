@@ -249,13 +249,15 @@ export default function CoursesPage() {
               ) : (
                 <BookOpen size={32} className="text-accent" />
               )}
-              <button
-                onClick={() => handlePublishToggle(course)}
-                className="absolute top-3 right-3"
-                aria-label="Toggle publish status"
-              >
-                <Badge variant={STATUS_VARIANT[course.status]}>{course.status}</Badge>
-              </button>
+              <div className="absolute top-3 right-3">
+                {isMentor ? (
+                  <Badge variant={STATUS_VARIANT[course.status]}>{course.status}</Badge>
+                ) : (
+                  <button onClick={() => handlePublishToggle(course)} aria-label="Toggle publish status">
+                    <Badge variant={STATUS_VARIANT[course.status]}>{course.status}</Badge>
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="p-5 flex flex-col gap-3 flex-1">

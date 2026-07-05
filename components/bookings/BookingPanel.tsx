@@ -113,22 +113,68 @@ function AvailabilityManager() {
 
 // ── Book a session modal ────────────────────────────────────────────────────────
 
+type ComputedSlot = { scheduledAt: Date; durationMinutes: number; label: string };
+
+function computeSlots(availability: AvailabilitySlot[]): ComputedSlot[] {
+  if (availability.length === 0) return [];
+  const now = new Date();
+  const slots: ComputedSlot[] = [];
+
+  for (let i = 0; i <= 13; i++) {
+    const base = new Date();
+    base.setDate(base.getDate() + i);
+    base.setHours(0, 0, 0, 0);
+    const dow = base.getDay();
+
+    for (const slot of availability.filter((s) => s.dayOfWeek === dow)) {
+      const [sh, sm] = slot.startTime.split(":").map(Number);
+      const [eh, em] = slot.endTime.split(":").map(Number);
+      const slotDate = new Date(base);
+      slotDate.setHours(sh, sm, 0, 0);
+      if (slotDate.getTime() - now.getTime() < 30 * 60 * 1000) continue;
+
+      const durationMinutes = (eh * 60 + em) - (sh * 60 + sm);
+      const label = slotDate.toLocaleString(undefined, {
+        weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+      }) + (durationMinutes > 0 ? ` (${durationMinutes} min)` : "");
+      slots.push({ scheduledAt: slotDate, durationMinutes, label });
+    }
+  }
+  return slots.sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime());
+}
+
 export function BookModal({ mentorId, mentorName, onClose, onBooked }: {
   mentorId: string; mentorName: string; onClose: () => void; onBooked: () => void;
 }) {
-  const [scheduledAt, setScheduledAt] = useState("");
-  const [duration, setDuration] = useState(30);
+  const [availability, setAvailability] = useState<AvailabilitySlot[]>([]);
+  const [loadingSlots, setLoadingSlots] = useState(true);
+  const [selectedSlot, setSelectedSlot] = useState<ComputedSlot | null>(null);
   const [topic, setTopic] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  useEffect(() => {
+    apiJson<AvailabilitySlot[]>(`/api/bookings/availability/${mentorId}`).then((r) => {
+      if (r.ok) setAvailability(r.data);
+      setLoadingSlots(false);
+    });
+  }, [mentorId]);
+
+  const slots = computeSlots(availability);
+
   async function submit() {
-    if (!scheduledAt) { setError("Pick a date and time"); return; }
+    if (!selectedSlot) { setError("Select an available time slot"); return; }
     setBusy(true);
     const result = await apiJson("/api/bookings", {
       method: "POST",
-      body: JSON.stringify({ mentorId, scheduledAt: new Date(scheduledAt).toISOString(), durationMinutes: duration, topic: topic || undefined, notes: notes || undefined }),
+      body: JSON.stringify({
+        mentorId,
+        scheduledAt: selectedSlot.scheduledAt.toISOString(),
+        durationMinutes: selectedSlot.durationMinutes,
+        topic: topic || undefined,
+        notes: notes || undefined,
+      }),
     });
     setBusy(false);
     if (!result.ok) { setError(result.message); return; }
@@ -143,22 +189,37 @@ export function BookModal({ mentorId, mentorName, onClose, onBooked }: {
           <h3 className="text-base font-semibold text-text-primary">Book a session with {mentorName}</h3>
           <button onClick={onClose} className="text-text-muted hover:text-text-secondary"><X size={18} /></button>
         </div>
+
         <div className="flex flex-col gap-3">
           <div>
-            <label className="text-xs font-medium text-text-secondary">Date & time</label>
-            <input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} min={new Date().toISOString().slice(0, 16)}
-              className="mt-1 w-full text-sm bg-surface-secondary border border-border rounded-md px-3 py-2 text-text-primary focus:outline-none focus:ring-1 focus:ring-accent" />
+            <label className="text-xs font-medium text-text-secondary mb-1.5 block">Available slots</label>
+            {loadingSlots && <p className="text-xs text-text-muted py-4 text-center">Loading availability…</p>}
+            {!loadingSlots && slots.length === 0 && (
+              <p className="text-xs text-text-muted py-4 text-center bg-surface-secondary rounded-lg">
+                {availability.length === 0
+                  ? "This mentor hasn't set availability yet."
+                  : "No available slots in the next 14 days."}
+              </p>
+            )}
+            {!loadingSlots && slots.length > 0 && (
+              <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto pr-1">
+                {slots.map((slot, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setSelectedSlot(slot)}
+                    className={`text-left text-sm px-3 py-2.5 rounded-lg border transition-colors ${
+                      selectedSlot?.scheduledAt.getTime() === slot.scheduledAt.getTime()
+                        ? "border-accent bg-accent-light text-accent font-medium"
+                        : "border-border bg-surface-secondary text-text-primary hover:border-accent"
+                    }`}
+                  >
+                    {slot.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-          <div>
-            <label className="text-xs font-medium text-text-secondary">Duration</label>
-            <select value={duration} onChange={(e) => setDuration(Number(e.target.value))}
-              className="mt-1 w-full text-sm bg-surface-secondary border border-border rounded-md px-3 py-2 text-text-primary focus:outline-none focus:ring-1 focus:ring-accent">
-              <option value={15}>15 minutes</option>
-              <option value={30}>30 minutes</option>
-              <option value={45}>45 minutes</option>
-              <option value={60}>1 hour</option>
-            </select>
-          </div>
+
           <div>
             <label className="text-xs font-medium text-text-secondary">Topic (optional)</label>
             <input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="What do you want to discuss?"
@@ -169,10 +230,13 @@ export function BookModal({ mentorId, mentorName, onClose, onBooked }: {
             <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Any preparation notes…"
               className="mt-1 w-full text-sm bg-surface-secondary border border-border rounded-md px-3 py-2 text-text-primary focus:outline-none focus:ring-1 focus:ring-accent resize-none" />
           </div>
+
           {error && <p className="text-xs text-error">{error}</p>}
           <div className="flex gap-2 justify-end mt-1">
             <button onClick={onClose} className="text-sm text-text-muted hover:text-text-secondary px-3 py-1.5">Cancel</button>
-            <Button onClick={submit} disabled={busy}>{busy ? "Booking…" : "Request session"}</Button>
+            <Button onClick={submit} disabled={busy || !selectedSlot}>
+              {busy ? "Booking…" : "Request session"}
+            </Button>
           </div>
         </div>
       </div>

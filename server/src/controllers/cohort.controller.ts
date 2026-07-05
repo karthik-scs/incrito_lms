@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { AppError } from "../utils/AppError";
 import { success } from "../utils/apiResponse";
 import * as cohortService from "../services/cohort.service";
 
@@ -33,11 +34,13 @@ export async function removeMentor(req: Request, res: Response) {
 }
 
 export async function addManager(req: Request, res: Response) {
+  if (req.user!.roleName !== "Admin") throw new AppError("Only admins can assign cohort managers", 403);
   const cohort = await cohortService.addCohortManager(String(req.params.id), req.body.userId);
   return success(res, cohort);
 }
 
 export async function removeManager(req: Request, res: Response) {
+  if (req.user!.roleName !== "Admin") throw new AppError("Only admins can remove cohort managers", 403);
   const cohort = await cohortService.removeCohortManager(String(req.params.id), String(req.params.userId));
   return success(res, cohort);
 }

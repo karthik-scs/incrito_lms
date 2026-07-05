@@ -170,13 +170,15 @@ export function CourseCertificatesPanel({ courseId, modules, canManage = true }:
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <Link
-                href={`/admin/certificates/${cert.template.id}/design`}
-                aria-label="Design this certificate"
-                className="text-text-muted hover:text-accent rounded-md p-1.5"
-              >
-                <Palette size={14} />
-              </Link>
+              {canManage && (
+                <Link
+                  href={`/admin/certificates/${cert.template.id}/design`}
+                  aria-label="Design this certificate"
+                  className="text-text-muted hover:text-accent rounded-md p-1.5"
+                >
+                  <Palette size={14} />
+                </Link>
+              )}
               {canManage && (
                 <>
                   <button onClick={() => openEdit(cert)} aria-label="Edit certificate" className="text-text-muted hover:text-accent rounded-md p-1.5">

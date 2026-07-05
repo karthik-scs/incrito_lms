@@ -6,6 +6,7 @@ import { Calendar, Radio, Users, Video } from "lucide-react";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Badge } from "@/components/ui/Badge";
 import { BookingPanel } from "@/components/bookings/BookingPanel";
+import { GroupCallPanel } from "@/components/group-calls/GroupCallPanel";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { apiJson } from "@/lib/authClient";
 
@@ -23,7 +24,7 @@ type SessionEvent = {
   mentor: { id: string; firstName: string; lastName: string };
 };
 
-type Tab = "upcoming" | "past" | "bookings";
+type Tab = "upcoming" | "past" | "bookings" | "group";
 
 const STATUS_VARIANT: Record<string, "info" | "error" | "success" | "muted"> = {
   SCHEDULED: "info",
@@ -97,10 +98,20 @@ export default function SessionsPage() {
         >
           1:1 Bookings
         </button>
+        <button
+          onClick={() => setTab("group")}
+          className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+            tab === "group" ? "bg-surface text-accent shadow-sm" : "text-text-secondary hover:text-text-primary"
+          }`}
+        >
+          Group Sessions
+        </button>
       </div>
 
       {tab === "bookings" ? (
         <BookingPanel />
+      ) : tab === "group" ? (
+        <GroupCallPanel />
       ) : (
         <>
           {loading && <p className="mt-6 text-sm text-text-secondary">Loading…</p>}

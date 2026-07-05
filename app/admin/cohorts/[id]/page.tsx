@@ -207,7 +207,10 @@ export default function CohortDetailPage() {
 
   return (
     <AdminLayout>
-      <Link href="/admin/cohorts" className="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary">
+      <Link
+        href={isAdmin ? "/admin/cohorts" : "/cohorts"}
+        className="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary"
+      >
         <ArrowLeft size={14} />
         Back to Cohorts
       </Link>

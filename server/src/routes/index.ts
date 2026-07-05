@@ -36,6 +36,7 @@ import filesRoutes from "./files.routes";
 import storageSettingsRoutes from "./storage-settings.routes";
 import zohoSettingsRoutes from "./zoho-settings.routes";
 import bookingsRoutes from "./bookings.routes";
+import groupCallsRoutes from "./group-calls.routes";
 import mentorRatingsRoutes from "./mentor-ratings.routes";
 import callsRoutes from "./calls.routes";
 
@@ -78,6 +79,7 @@ router.use("/files", filesRoutes);
 router.use("/storage-settings", storageSettingsRoutes);
 router.use("/zoho-settings", zohoSettingsRoutes);
 router.use("/bookings", bookingsRoutes);
+router.use("/group-calls", groupCallsRoutes);
 router.use("/mentor-ratings", mentorRatingsRoutes);
 router.use("/calls", callsRoutes);
 

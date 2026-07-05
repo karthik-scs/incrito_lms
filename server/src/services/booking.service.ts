@@ -2,6 +2,19 @@ import { prisma } from "../lib/prisma";
 import { AppError } from "../utils/AppError";
 import { notifyUser } from "./notification.service";
 
+function dmKey(a: string, b: string) {
+  return [a, b].sort().join("_");
+}
+
+async function postBookingMessage(userA: string, userB: string, content: string, attachmentType: string, attachmentUrl: string) {
+  const key = dmKey(userA, userB);
+  const conversation = await prisma.conversation.findUnique({ where: { dmKey: key } });
+  if (!conversation) return; // no active chat — skip silently
+  await prisma.chatMessage.create({
+    data: { conversationId: conversation.id, senderId: userA, content, attachmentType, attachmentUrl },
+  });
+}
+
 // ── Availability ──────────────────────────────────────────────────────────────
 
 export async function listAvailability(mentorId: string) {
@@ -70,6 +83,10 @@ export async function createBooking(studentId: string, data: {
 
   await notifyUser(data.mentorId, "ANNOUNCEMENT", "New 1:1 booking request", "A student has requested a 1:1 session with you.", { action: "view_booking", bookingId: booking.id });
 
+  const when = new Date(data.scheduledAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const description = data.topic ? `${data.topic} — ${when}` : when;
+  await postBookingMessage(studentId, data.mentorId, `📅 1:1 session requested: ${description}`, "BOOKING_REQUEST", booking.id);
+
   return booking;
 }
 
@@ -84,6 +101,10 @@ export async function confirmBooking(bookingId: string, mentorId: string, meetin
   });
 
   await notifyUser(booking.studentId, "ANNOUNCEMENT", "Session confirmed", "Your 1:1 session with your mentor has been confirmed.", { action: "view_booking", bookingId: booking.id });
+
+  const when = booking.scheduledAt.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const urlNote = meetingUrl ? ` · Join: ${meetingUrl}` : "";
+  await postBookingMessage(mentorId, booking.studentId, `✅ 1:1 session confirmed: ${when}${urlNote}`, "BOOKING_CONFIRMED", bookingId);
 
   return updated;
 }

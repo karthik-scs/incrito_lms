@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { Sidebar, type SidebarRole } from "./Sidebar";
 import { MobileBottomNav } from "./MobileBottomNav";
 import { DashboardTopbar } from "@/components/dashboard/DashboardTopbar";
@@ -10,17 +10,28 @@ import { useAuth } from "@/components/providers/AuthProvider";
 const COLLAPSE_STORAGE_KEY = "incrito:sidebar-collapsed";
 const VALID_ROLES: SidebarRole[] = ["Student", "Mentor", "Cohort Manager", "Admin"];
 
-/**
- * Shared shell for every authenticated/dashboard page: a fixed-height sidebar that never scrolls
- * with the page, a sticky topbar (search/chat/settings/notifications/theme/profile), and a
- * scrollable content area below it. Only the content area (`children`) scrolls.
- *
- * Pulls the current user from `useAuth()` instead of taking `role`/`userName` props — every page
- * using this layout is implicitly auth-gated: unauthenticated visitors are redirected to /login.
- */
+function canAccessPath(role: SidebarRole, pathname: string): boolean {
+  if (!pathname.startsWith("/admin")) return true;
+  if (role === "Admin") return true;
+  if (role === "Mentor") return pathname.startsWith("/admin/courses");
+  if (role === "Cohort Manager") {
+    return (
+      pathname.startsWith("/admin/courses") ||
+      // /admin/cohorts/[id] — individual cohort detail, not the list page
+      (pathname.startsWith("/admin/cohorts/") && pathname.split("/").filter(Boolean).length > 2)
+    );
+  }
+  return false; // Student has no admin routes
+}
+
+function roleHome(role: SidebarRole): string {
+  return role === "Admin" ? "/admin/dashboard" : "/dashboard";
+}
+
 export function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -29,10 +40,18 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (loading) return;
+    if (!user) {
       router.replace("/login");
+      return;
     }
-  }, [loading, user, router]);
+    const role: SidebarRole = VALID_ROLES.includes(user.role as SidebarRole)
+      ? (user.role as SidebarRole)
+      : "Student";
+    if (!canAccessPath(role, pathname)) {
+      router.replace(roleHome(role));
+    }
+  }, [loading, user, pathname, router]);
 
   function toggleCollapse() {
     setCollapsed((prev) => {
@@ -48,6 +67,10 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
 
   const role: SidebarRole = VALID_ROLES.includes(user.role as SidebarRole) ? (user.role as SidebarRole) : "Student";
   const userName = `${user.firstName} ${user.lastName}`.trim();
+
+  if (!canAccessPath(role, pathname)) {
+    return null;
+  }
 
   return (
     <div className="h-screen flex overflow-hidden">

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Radio, Video } from "lucide-react";
+import { CalendarCheck, ChevronLeft, ChevronRight, Radio, Video } from "lucide-react";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Badge } from "@/components/ui/Badge";
 import { Select } from "@/components/ui/Select";
@@ -11,16 +11,18 @@ import { apiJson } from "@/lib/authClient";
 
 type CalendarEvent = {
   id: string;
-  type: "LIVE_CLASS";
+  type: "LIVE_CLASS" | "BOOKING";
   title: string;
   startTime: string;
   endTime: string;
   status: string;
-  joinUrl: string | null;
-  isLiveNow: boolean;
-  cohort: { id: string; name: string } | null;
-  course: { id: string; title: string; slug: string } | null;
-  mentor: { id: string; firstName: string; lastName: string };
+  joinUrl?: string | null;
+  isLiveNow?: boolean;
+  cohort?: { id: string; name: string } | null;
+  course?: { id: string; title: string; slug: string } | null;
+  mentor?: { id: string; firstName: string; lastName: string } | null;
+  student?: { id: string; firstName: string; lastName: string } | null;
+  meetingUrl?: string | null;
 };
 
 type ViewMode = "day" | "week" | "month";
@@ -38,7 +40,7 @@ function startOfMonth(date: Date) {
   return d;
 }
 
-function formatTime(iso: string) {
+function formatTime(iso: string | Date) {
   return new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
@@ -59,9 +61,6 @@ export default function CalendarPage() {
   useEffect(() => {
     async function load() {
       setLoading(true);
-      // Fetch a generous ±35 day window around the anchor — covers day/week/month views without
-      // needing a separate fetch per view, since this is a light query and views are just
-      // different client-side slices of the same event list.
       const from = new Date(anchorDate);
       from.setDate(from.getDate() - 35);
       const to = new Date(anchorDate);
@@ -78,7 +77,9 @@ export default function CalendarPage() {
   const filtered = useMemo(
     () =>
       events.filter(
-        (e) => (!cohortFilter || e.cohort?.id === cohortFilter) && (!mentorFilter || e.mentor.id === mentorFilter)
+        (e) =>
+          (!cohortFilter || e.cohort?.id === cohortFilter) &&
+          (!mentorFilter || e.mentor?.id === mentorFilter)
       ),
     [events, cohortFilter, mentorFilter]
   );
@@ -102,11 +103,15 @@ export default function CalendarPage() {
   }
 
   const today = new Date();
-  const todaysEvents = eventsOnDay(today).filter((e) => new Date(e.startTime) >= today || e.isLiveNow);
-  const upcomingThisWeekCount = filtered.filter((e) => {
+  const todaysEvents = eventsOnDay(today).filter(
+    (e) => new Date(e.startTime) >= today || e.isLiveNow
+  );
+  const upcomingThisWeek = filtered.filter((e) => {
     const start = new Date(e.startTime);
-    return start >= weekDays[0] && start < new Date(weekDays[6].getTime() + 24 * 60 * 60 * 1000) && start >= new Date();
-  }).length;
+    return start >= weekDays[0] && start < new Date(weekDays[6].getTime() + 24 * 60 * 60 * 1000) && start >= today;
+  });
+  const upcomingLiveCount = upcomingThisWeek.filter((e) => e.type === "LIVE_CLASS").length;
+  const upcomingBookingCount = upcomingThisWeek.filter((e) => e.type === "BOOKING").length;
 
   const cohortOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -115,11 +120,11 @@ export default function CalendarPage() {
   }, [events]);
   const mentorOptions = useMemo(() => {
     const map = new Map<string, string>();
-    events.forEach((e) => map.set(e.mentor.id, `${e.mentor.firstName} ${e.mentor.lastName}`));
+    events.forEach((e) => e.mentor && map.set(e.mentor.id, `${e.mentor.firstName} ${e.mentor.lastName}`));
     return Array.from(map, ([value, label]) => ({ value, label }));
   }, [events]);
 
-  const nextLive = filtered.find((e) => e.isLiveNow) ?? filtered.find((e) => new Date(e.startTime) > new Date());
+  const nextLive = filtered.find((e) => e.type === "LIVE_CLASS" && e.isLiveNow) ?? filtered.find((e) => e.type === "LIVE_CLASS" && new Date(e.startTime) > today);
 
   function goToday() {
     setAnchorDate(new Date());
@@ -142,7 +147,16 @@ export default function CalendarPage() {
   }
 
   function EventPill({ event }: { event: CalendarEvent }) {
-    return (
+    const isBooking = event.type === "BOOKING";
+    return isBooking ? (
+      <div className="block rounded-md px-2 py-1.5 text-xs bg-accent-light text-accent cursor-default">
+        <p className="font-medium truncate flex items-center gap-1">
+          <CalendarCheck size={10} />
+          {event.title}
+        </p>
+        <p className="text-[10px] opacity-80">{formatTime(event.startTime)}</p>
+      </div>
+    ) : (
       <Link
         href={event.course ? `/courses/${event.course.slug}/learn/${event.id}` : "#"}
         className={`block rounded-md px-2 py-1.5 text-xs ${
@@ -241,11 +255,17 @@ export default function CalendarPage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-text-primary truncate flex items-center gap-1.5">
                         {event.isLiveNow && <Radio size={11} className="text-error animate-pulse" />}
+                        {event.type === "BOOKING" && <CalendarCheck size={11} className="text-accent" />}
                         {event.title}
                       </p>
                       {event.cohort && <p className="text-xs text-text-muted mt-0.5">{event.cohort.name}</p>}
+                      {event.type === "BOOKING" && event.mentor && (
+                        <p className="text-xs text-text-muted mt-0.5">
+                          with {event.mentor.firstName} {event.mentor.lastName}
+                        </p>
+                      )}
                     </div>
-                    {event.course && (
+                    {event.type === "LIVE_CLASS" && event.course && (
                       <Link
                         href={`/courses/${event.course.slug}/learn/${event.id}`}
                         className={`text-xs font-medium rounded-md px-2.5 py-1.5 shrink-0 ${
@@ -254,6 +274,16 @@ export default function CalendarPage() {
                       >
                         Join
                       </Link>
+                    )}
+                    {event.type === "BOOKING" && event.meetingUrl && event.status === "CONFIRMED" && (
+                      <a
+                        href={event.meetingUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs font-medium rounded-md px-2.5 py-1.5 shrink-0 bg-accent text-accent-foreground"
+                      >
+                        Join meeting
+                      </a>
                     )}
                   </div>
                 ))}
@@ -285,13 +315,16 @@ export default function CalendarPage() {
                       </p>
                       <div className="mt-1 flex flex-col gap-0.5">
                         {dayEvents.slice(0, 2).map((event) => (
-                          <Link
+                          <span
                             key={event.id}
-                            href={event.course ? `/courses/${event.course.slug}/learn/${event.id}` : "#"}
-                            className="block text-[10px] truncate rounded px-1 py-0.5 bg-info-lightest text-info-foreground"
+                            className={`block text-[10px] truncate rounded px-1 py-0.5 ${
+                              event.type === "BOOKING"
+                                ? "bg-accent-light text-accent"
+                                : "bg-info-lightest text-info-foreground"
+                            }`}
                           >
                             {event.title}
-                          </Link>
+                          </span>
                         ))}
                         {dayEvents.length > 2 && (
                           <span className="text-[10px] text-text-muted px-1">+{dayEvents.length - 2} more</span>
@@ -309,6 +342,10 @@ export default function CalendarPage() {
               <Video size={12} className="text-info" />
               Live Classes
             </span>
+            <span className="flex items-center gap-1.5">
+              <CalendarCheck size={12} className="text-accent" />
+              1:1 Sessions
+            </span>
           </div>
         </div>
 
@@ -325,7 +362,7 @@ export default function CalendarPage() {
                       {formatTime(event.startTime)} – {formatTime(event.endTime)}
                     </p>
                   </div>
-                  {event.course && (
+                  {event.type === "LIVE_CLASS" && event.course && (
                     <Link
                       href={`/courses/${event.course.slug}/learn/${event.id}`}
                       className={`text-xs font-medium rounded-md px-2.5 py-1.5 shrink-0 ${
@@ -337,6 +374,16 @@ export default function CalendarPage() {
                       Join
                     </Link>
                   )}
+                  {event.type === "BOOKING" && event.meetingUrl && event.status === "CONFIRMED" && (
+                    <a
+                      href={event.meetingUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs font-medium rounded-md px-2.5 py-1.5 shrink-0 bg-accent text-accent-foreground"
+                    >
+                      Join
+                    </a>
+                  )}
                 </div>
               ))}
             </div>
@@ -344,9 +391,15 @@ export default function CalendarPage() {
 
           <div className="bg-surface border border-border rounded-2xl p-5">
             <h2 className="text-sm font-semibold text-text-primary">Upcoming This Week</h2>
-            <div className="mt-3 flex items-center gap-2">
-              <Badge variant="info">Live Classes</Badge>
-              <span className="text-sm font-medium text-text-primary">{upcomingThisWeekCount}</span>
+            <div className="mt-3 flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <Badge variant="info">Live Classes</Badge>
+                <span className="text-sm font-medium text-text-primary">{upcomingLiveCount}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant="accent">1:1 Sessions</Badge>
+                <span className="text-sm font-medium text-text-primary">{upcomingBookingCount}</span>
+              </div>
             </div>
           </div>
 

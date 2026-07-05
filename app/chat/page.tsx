@@ -3,22 +3,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
+  CalendarPlus,
   Crown,
   FileText,
   Lock,
   Mic,
   Paperclip,
-  Phone,
   Pin,
   Plus,
   Search,
   Send,
   Smile,
   Square,
-  Video,
   X,
 } from "lucide-react";
-import { CallManager, type CallManagerHandle } from "@/components/calls/CallManager";
+import { BookModal } from "@/components/bookings/BookingPanel";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
@@ -79,6 +78,20 @@ function isPremiumPairing(myRole: string | undefined, otherRole: string) {
 }
 
 function MessageAttachment({ url, type }: { url: string; type?: string | null }) {
+  if (type === "BOOKING_REQUEST")
+    return (
+      <div className="flex items-center gap-2 text-xs bg-white/10 rounded-lg px-2.5 py-2 mt-1">
+        <CalendarPlus size={13} className="shrink-0 opacity-80" />
+        <span className="leading-snug opacity-90">Session request sent — check your Sessions page.</span>
+      </div>
+    );
+  if (type === "BOOKING_CONFIRMED")
+    return (
+      <div className="flex items-center gap-2 text-xs bg-white/10 rounded-lg px-2.5 py-2 mt-1">
+        <CalendarPlus size={13} className="shrink-0 opacity-80" />
+        <span className="leading-snug opacity-90">Session confirmed — see your Calendar.</span>
+      </div>
+    );
   if (type === "IMAGE") return <img src={url} alt="Attachment" className="max-w-[220px] rounded-lg" />;
   if (type === "VIDEO")
     return (
@@ -239,11 +252,12 @@ export default function ChatPage() {
   const [contacts, setContacts] = useState<Contacts>({ admins: [], managers: [], mentors: [], students: [] });
   const [activeTab, setActiveTab] = useState<keyof Contacts>("admins");
 
+  const [bookingOpen, setBookingOpen] = useState(false);
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const callRef = useRef<CallManagerHandle>(null);
 
   async function loadConversations() {
     const result = await apiJson<ConversationSummary[]>("/api/chat/conversations");
@@ -539,34 +553,15 @@ export default function ChatPage() {
                   </p>
                   <p className="text-xs text-text-muted">{activeConversation.otherUser.role.name}</p>
                 </div>
-                {showCallButtons && (
+                {showCallButtons && user?.role === "Student" && (
                   <div className="flex items-center gap-2 shrink-0">
-                    <Tooltip label={composerLocked ? "Upgrade to Intensive Pro to unlock calls" : "Start a video call"}>
+                    <Tooltip label="Book a 1:1 session with this mentor">
                       <button
-                        onClick={() => {
-                          if (!activeConversation || composerLocked) return;
-                          const other = activeConversation.otherUser;
-                          callRef.current?.startCall(other.id, `${other.firstName} ${other.lastName}`, other.avatarUrl, "VIDEO");
-                        }}
-                        disabled={composerLocked}
-                        aria-label="Video call"
-                        className="flex items-center justify-center w-9 h-9 rounded-full bg-surface-secondary text-text-primary hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        onClick={() => setBookingOpen(true)}
+                        aria-label="Book 1:1 session"
+                        className="flex items-center justify-center w-9 h-9 rounded-full bg-surface-secondary text-text-primary hover:bg-accent hover:text-accent-foreground transition-colors"
                       >
-                        <Video size={18} />
-                      </button>
-                    </Tooltip>
-                    <Tooltip label={composerLocked ? "Upgrade to Intensive Pro to unlock calls" : "Start an audio call"}>
-                      <button
-                        onClick={() => {
-                          if (!activeConversation || composerLocked) return;
-                          const other = activeConversation.otherUser;
-                          callRef.current?.startCall(other.id, `${other.firstName} ${other.lastName}`, other.avatarUrl, "AUDIO");
-                        }}
-                        disabled={composerLocked}
-                        aria-label="Audio call"
-                        className="flex items-center justify-center w-9 h-9 rounded-full bg-surface-secondary text-text-primary hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        <Phone size={18} />
+                        <CalendarPlus size={18} />
                       </button>
                     </Tooltip>
                   </div>
@@ -669,7 +664,18 @@ export default function ChatPage() {
         </div>
       </div>
 
-      <CallManager ref={callRef} />
+      {bookingOpen && activeConversation && user?.role === "Student" && (
+        <BookModal
+          mentorId={activeConversation.otherUser.id}
+          mentorName={`${activeConversation.otherUser.firstName} ${activeConversation.otherUser.lastName}`}
+          onClose={() => setBookingOpen(false)}
+          onBooked={async () => {
+            // Reload messages to show the booking request system message
+            if (activeConversationId) await loadMessages(activeConversationId);
+            await loadConversations();
+          }}
+        />
+      )}
 
       <Modal open={newChatOpen} onClose={() => setNewChatOpen(false)} title="New Chat" maxWidth="max-w-lg">
         {visibleTabs.length === 0 ? (

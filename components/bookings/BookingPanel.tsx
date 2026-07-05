@@ -113,7 +113,7 @@ function AvailabilityManager() {
 
 // ── Book a session modal ────────────────────────────────────────────────────────
 
-function BookModal({ mentorId, mentorName, onClose, onBooked }: {
+export function BookModal({ mentorId, mentorName, onClose, onBooked }: {
   mentorId: string; mentorName: string; onClose: () => void; onBooked: () => void;
 }) {
   const [scheduledAt, setScheduledAt] = useState("");

@@ -12,31 +12,17 @@ const safeSelect = {
   isActive: true,
   createdAt: true,
   updatedAt: true,
-  zoomAccountId: true,
   zohoAccountOwnerName: true,
   // Secrets are deliberately excluded — the frontend only ever sees booleans for those, never the values.
 } as const;
 
-/** Every live account a user has connected — secrets redacted, same pattern as ZoomAccountsTab/WhatsApp settings. */
+/** Every live account a user has connected — secrets redacted. */
 export async function listMyLiveAccounts(userId: string) {
-  const rows = await prisma.userLiveAccount.findMany({ where: { userId }, select: safeSelect });
-  return rows.map((row) => ({
-    ...row,
-    zoomConfigured: row.provider === "ZOOM",
-  }));
-}
-
-export async function connectZoomAccount(
-  userId: string,
-  data: { zoomAccountId: string; zoomClientId: string; zoomClientSecret: string; zoomSecretToken: string }
-) {
-  const account = await prisma.userLiveAccount.upsert({
-    where: { userId_provider: { userId, provider: "ZOOM" } },
-    update: { ...data, isActive: true },
-    create: { userId, provider: "ZOOM", ...data },
+  const rows = await prisma.userLiveAccount.findMany({
+    where: { userId, provider: "ZOHO" },
     select: safeSelect,
   });
-  return account;
+  return rows;
 }
 
 export async function disconnectLiveAccount(userId: string, id: string) {

@@ -31,7 +31,7 @@ export async function getMyCalendarEvents(
           type: "LIVE",
           module: { courseId: { in: courseIds } },
           liveClass: {
-            status: { notIn: ["CANCELLED", "COMPLETED"] },
+            status: { notIn: ["CANCELLED"] },
             ...(filter.mentorId ? { mentorId: filter.mentorId } : {}),
             ...(filter.from ? { startTime: { gte: filter.from } } : {}),
             ...(filter.to ? { startTime: { lte: filter.to } } : {}),
@@ -47,13 +47,17 @@ export async function getMyCalendarEvents(
         if (!lesson.liveClass) continue;
         const liveClass = lesson.liveClass;
         const cohort = [...cohortById.values()].find((c) => c.courseId === lesson.module.courseId);
+        const effectiveStatus =
+          liveClass.status === "SCHEDULED" && new Date() > new Date(liveClass.endTime)
+            ? "COMPLETED"
+            : liveClass.status;
         liveClassEvents.push({
           id: lesson.id,
           type: "LIVE_CLASS" as const,
           title: lesson.title,
           startTime: liveClass.startTime,
           endTime: liveClass.endTime,
-          status: liveClass.status,
+          status: effectiveStatus,
           joinUrl: liveClass.joinUrl,
           isLiveNow: isLiveNow(liveClass),
           cohort: cohort ? { id: cohort.id, name: cohort.name } : null,

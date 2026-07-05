@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Bell, BookOpen, Database, HardDrive, HeadphonesIcon, Layers, Mail, MessageCircle, Settings as SettingsIcon, Shield, ShieldCheck, User, Video } from "lucide-react";
+import { Bell, BookOpen, Database, HardDrive, HeadphonesIcon, Layers, Mail, Settings as SettingsIcon, Shield, ShieldCheck, User } from "lucide-react";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import { ProfileSettingsTab } from "@/components/settings/ProfileSettingsTab";
 import { NotificationSettingsTab } from "@/components/settings/NotificationSettingsTab";
@@ -9,8 +9,6 @@ import { EmailSettingsTab } from "@/components/settings/EmailSettingsTab";
 import { SecuritySettingsTab } from "@/components/settings/SecuritySettingsTab";
 import { GeneralSettingsTab } from "@/components/settings/GeneralSettingsTab";
 import { RolesPermissionsTab } from "@/components/settings/RolesPermissionsTab";
-import { WhatsAppSettingsTab } from "@/components/settings/WhatsAppSettingsTab";
-import { ZoomAccountsTab } from "@/components/settings/ZoomAccountsTab";
 import { CourseSettingsTab } from "@/components/settings/CourseSettingsTab";
 import { PlanSettingsTab } from "@/components/settings/PlanSettingsTab";
 import { StorageSettingsTab } from "@/components/settings/StorageSettingsTab";
@@ -21,8 +19,6 @@ const TABS = [
   { key: "profile", label: "Profile Settings", icon: User, content: ProfileSettingsTab },
   { key: "notifications", label: "Notification Settings", icon: Bell, content: NotificationSettingsTab },
   { key: "email", label: "Email Configure (SMTP)", icon: Mail, content: EmailSettingsTab },
-  { key: "whatsapp", label: "WhatsApp API Settings", icon: MessageCircle, content: WhatsAppSettingsTab },
-  { key: "zoom", label: "Live Class API", icon: Video, content: ZoomAccountsTab },
   { key: "courses", label: "Courses Settings", icon: BookOpen, content: CourseSettingsTab },
   { key: "plans", label: "Plans", icon: Layers, content: PlanSettingsTab },
   { key: "storage", label: "Storage (S3)", icon: HardDrive, content: StorageSettingsTab },

@@ -8,11 +8,6 @@ export async function list(req: Request, res: Response) {
   return success(res, accounts);
 }
 
-export async function connectZoom(req: Request, res: Response) {
-  const account = await liveAccountService.connectZoomAccount(req.user!.id, req.body);
-  return success(res, account, 201);
-}
-
 export async function disconnect(req: Request, res: Response) {
   await liveAccountService.disconnectLiveAccount(req.user!.id, String(req.params.id));
   return success(res, { deleted: true });

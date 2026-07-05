@@ -64,6 +64,5 @@ router.post(
 router.get("/:id/live-class/recording-url", authenticate, asyncHandler(lessonController.recordingUrl));
 router.get("/:id/content-url", authenticate, asyncHandler(lessonController.contentUrl));
 router.post("/:id/complete", authenticate, asyncHandler(lessonController.complete));
-router.get("/:id/zoom-signature", authenticate, asyncHandler(lessonController.zoomSignature));
 
 export default router;

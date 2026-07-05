@@ -59,11 +59,6 @@ export async function complete(req: Request, res: Response) {
   return success(res, result);
 }
 
-export async function zoomSignature(req: Request, res: Response) {
-  const result = await lessonService.getZoomSdkSignature(String(req.params.id), req.user!.id);
-  return success(res, result);
-}
-
 export async function reorder(req: Request, res: Response) {
   const lessons = await lessonService.reorderLessons(req.body.moduleId, req.body.orderedIds);
   return success(res, lessons);

@@ -8,6 +8,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
 import { Select } from "@/components/ui/Select";
 import { apiJson } from "@/lib/authClient";
+import { useAuth } from "@/components/providers/AuthProvider";
 
 type Audience = "ALL" | "STUDENTS" | "MENTORS" | "COHORT_MANAGERS";
 
@@ -47,6 +48,8 @@ function timeAgo(iso: string) {
 }
 
 export default function AnnouncementsPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "Admin";
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -104,7 +107,11 @@ export default function AnnouncementsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-text-primary">Announcements</h1>
-          <p className="text-sm text-text-secondary mt-1">Broadcast updates to students, mentors and cohort managers.</p>
+          <p className="text-sm text-text-secondary mt-1">
+            {isAdmin
+              ? "Broadcast updates to students, mentors and cohort managers."
+              : "Send announcements to your assigned cohort members."}
+          </p>
         </div>
         <Button onClick={openCreate}>
           <Plus size={16} />
@@ -167,12 +174,19 @@ export default function AnnouncementsPage() {
               className="mt-1 w-full bg-surface border border-border rounded-md px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent resize-none"
             />
           </div>
-          <div>
-            <label className="text-sm font-medium text-text-secondary">Send to</label>
-            <div className="mt-1">
-              <Select value={audience} onChange={(v) => setAudience(v as Audience)} options={AUDIENCE_OPTIONS} />
+          {isAdmin && (
+            <div>
+              <label className="text-sm font-medium text-text-secondary">Send to</label>
+              <div className="mt-1">
+                <Select value={audience} onChange={(v) => setAudience(v as Audience)} options={AUDIENCE_OPTIONS} />
+              </div>
             </div>
-          </div>
+          )}
+          {!isAdmin && (
+            <p className="text-xs text-text-muted bg-surface-secondary rounded-md px-3 py-2">
+              This announcement will be sent to students in your assigned cohorts.
+            </p>
+          )}
           {formError && <p className="text-sm text-error">{formError}</p>}
           <div className="flex justify-end gap-2 mt-2">
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>

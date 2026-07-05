@@ -11,12 +11,25 @@ const COLLAPSE_STORAGE_KEY = "incrito:sidebar-collapsed";
 const VALID_ROLES: SidebarRole[] = ["Student", "Mentor", "Cohort Manager", "Admin"];
 
 function canAccessPath(role: SidebarRole, pathname: string): boolean {
+  // Role-specific route namespaces — strict ownership
+  if (pathname.startsWith("/mentor/")) return role === "Mentor";
+  if (pathname.startsWith("/cohort-manager/")) return role === "Cohort Manager";
+
   if (!pathname.startsWith("/admin")) return true;
   if (role === "Admin") return true;
-  if (role === "Mentor") return pathname.startsWith("/admin/courses");
+
+  if (role === "Mentor") {
+    return (
+      pathname === "/admin/announcements" ||
+      // Course detail only (/admin/courses/[slug]) — list is at /mentor/courses
+      (pathname.startsWith("/admin/courses/") && pathname !== "/admin/courses")
+    );
+  }
   if (role === "Cohort Manager") {
     return (
-      pathname.startsWith("/admin/courses") ||
+      pathname === "/admin/announcements" ||
+      // Course detail only (/admin/courses/[slug]) — list is at /cohort-manager/courses
+      (pathname.startsWith("/admin/courses/") && pathname !== "/admin/courses") ||
       // /admin/cohorts/[id] — individual cohort detail, not the list page
       (pathname.startsWith("/admin/cohorts/") && pathname.split("/").filter(Boolean).length > 2)
     );

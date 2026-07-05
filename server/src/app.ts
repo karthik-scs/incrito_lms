@@ -22,10 +22,7 @@ export function createApp() {
       credentials: true,
     })
   );
-  // `verify` stashes the exact raw bytes alongside the parsed body — the Zoom webhook handler
-  // needs the untouched raw body to recompute its HMAC signature; re-stringifying req.body
-  // wouldn't byte-for-byte match what Zoom actually signed.
-  app.use(express.json({ verify: (req, _res, buf) => { (req as express.Request).rawBody = buf; } }));
+  app.use(express.json());
   app.use(cookieParser());
   // No more `/uploads` static directory — every file lives in S3 and is only ever served via a
   // short-lived signed URL minted by `/api/files/*` or one of the resource-specific signed-URL

@@ -5,6 +5,7 @@ import { Download } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { CertificateCanvas } from "./CertificateCanvas";
+import { downloadAsPdf } from "@/lib/certificateDownload";
 import type { CertificateLayer, CertificateVariables } from "@/lib/certificateLayers";
 
 export function CertificateViewModal({
@@ -35,13 +36,7 @@ export function CertificateViewModal({
     setDownloading(true);
     setError(null);
     try {
-      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas"), import("jspdf")]);
-      const canvas = await html2canvas(canvasRef.current, { scale: 2, useCORS: true });
-      const imageData = canvas.toDataURL("image/png");
-
-      const pdf = new jsPDF({ orientation: "landscape", unit: "px", format: [canvas.width, canvas.height] });
-      pdf.addImage(imageData, "PNG", 0, 0, canvas.width, canvas.height);
-      pdf.save(fileName);
+      await downloadAsPdf(canvasRef.current, fileName);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not generate the PDF");
     } finally {

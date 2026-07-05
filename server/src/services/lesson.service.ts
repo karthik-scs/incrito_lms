@@ -1,8 +1,6 @@
 import { prisma } from "../lib/prisma";
 import { AppError } from "../utils/AppError";
-import { createMeeting, createMeetingWithCredentials } from "../lib/zoom";
 import { createZohoMeeting } from "../lib/zoho";
-import { generateMeetingSdkSignature } from "../lib/zoomSdkSignature";
 import { buildS3Key, getPresignedPutUrl, getPresignedGetUrl, deleteObject, keyFromUrl } from "../lib/s3";
 import { notifyCohort } from "./notification.service";
 
@@ -45,10 +43,14 @@ export function isLiveNow(liveClass: { startTime: Date; status: string }) {
   return Date.now() >= liveClass.startTime.getTime() - 10 * 60 * 1000;
 }
 
-function withComputedStatus<T extends { liveClass: { startTime: Date; status: string } | null }>(lesson: T) {
+function withComputedStatus<T extends { liveClass: { startTime: Date; endTime: Date; status: string } | null }>(lesson: T) {
+  if (!lesson.liveClass) return { ...lesson, liveClass: null };
+  const lc = lesson.liveClass;
+  const effectiveStatus =
+    lc.status === "SCHEDULED" && new Date() > new Date(lc.endTime) ? "COMPLETED" : lc.status;
   return {
     ...lesson,
-    liveClass: lesson.liveClass ? { ...lesson.liveClass, isLiveNow: isLiveNow(lesson.liveClass) } : null,
+    liveClass: { ...lc, status: effectiveStatus, isLiveNow: isLiveNow({ ...lc, status: effectiveStatus }) },
   };
 }
 
@@ -67,19 +69,19 @@ async function nextOrder(moduleId: string) {
 }
 
 type ScheduledMeeting = {
-  provider: "ZOOM" | "ZOHO";
+  provider: "ZOHO";
   userLiveAccountId: string | null;
-  zoomMeetingId: string | null;
-  zoomAccountId: string | null;
-  zoomPasscode: string | null;
+  zoomMeetingId: null;
+  zoomAccountId: null;
+  zoomPasscode: null;
   zohoMeetingId: string | null;
-  joinUrl: string;
-  hostStartUrl: string;
+  joinUrl: string | null;
+  hostStartUrl: string | null;
 };
 
 /**
- * Both providers open in a new tab to start/join (no in-app embedding, by explicit decision) — so
- * this only decides *who* schedules the meeting and *where*, not how the join UI behaves.
+ * Schedules a Zoho meeting for the given live account. If no Zoho account is connected,
+ * creates the live class without a meeting URL so the mentor can paste one later.
  */
 async function scheduleLiveMeeting(input: LiveClassInput, topic: string): Promise<ScheduledMeeting> {
   if (input.userLiveAccountId) {
@@ -87,7 +89,6 @@ async function scheduleLiveMeeting(input: LiveClassInput, topic: string): Promis
     if (!account || account.userId !== input.mentorId || !account.isActive) {
       throw new AppError("That connected account doesn't belong to this host or is no longer active", 422);
     }
-
     if (account.provider === "ZOHO") {
       const meeting = await createZohoMeeting(account.id, { topic, startTime: input.startTime, endTime: input.endTime });
       return {
@@ -101,37 +102,18 @@ async function scheduleLiveMeeting(input: LiveClassInput, topic: string): Promis
         hostStartUrl: meeting.hostStartUrl,
       };
     }
-
-    if (!account.zoomAccountId || !account.zoomClientId || !account.zoomClientSecret) {
-      throw new AppError("This Zoom account isn't fully connected — reconnect it in Settings.", 422);
-    }
-    const meeting = await createMeetingWithCredentials(
-      { id: account.id, label: "Personal Zoom", zoomAccountId: account.zoomAccountId, clientId: account.zoomClientId, clientSecret: account.zoomClientSecret },
-      { topic, startTime: input.startTime, endTime: input.endTime }
-    );
-    return {
-      provider: "ZOOM",
-      userLiveAccountId: account.id,
-      zoomMeetingId: meeting.zoomMeetingId,
-      zoomAccountId: null,
-      zoomPasscode: meeting.passcode,
-      zohoMeetingId: null,
-      joinUrl: meeting.joinUrl,
-      hostStartUrl: meeting.hostStartUrl,
-    };
   }
 
-  // No personal account picked — fall back to the shared admin-managed Zoom pool (unchanged).
-  const meeting = await createMeeting({ topic, startTime: input.startTime, endTime: input.endTime });
+  // No Zoho account selected — create the session without a meeting URL; mentor can add one later.
   return {
-    provider: "ZOOM",
+    provider: "ZOHO",
     userLiveAccountId: null,
-    zoomMeetingId: meeting.zoomMeetingId,
-    zoomAccountId: meeting.zoomAccountId,
-    zoomPasscode: meeting.passcode,
+    zoomMeetingId: null,
+    zoomAccountId: null,
+    zoomPasscode: null,
     zohoMeetingId: null,
-    joinUrl: meeting.joinUrl,
-    hostStartUrl: meeting.hostStartUrl,
+    joinUrl: null,
+    hostStartUrl: null,
   };
 }
 
@@ -317,38 +299,6 @@ export async function notifyLiveClassTransition(
   }
 }
 
-/**
- * Real in-app meeting embedding — only possible once a Meeting SDK key/secret is configured on
- * the ZoomAccount this lesson's session was scheduled under (separate credentials from the
- * Server-to-Server OAuth app that scheduled it). Returns `configured: false` otherwise, so the
- * frontend can fall back to opening the Zoom join link in a new tab without lying about it.
- */
-export async function getZoomSdkSignature(lessonId: string, userId: string) {
-  const lesson = await prisma.lesson.findUnique({ where: { id: lessonId }, include: { liveClass: true } });
-  if (!lesson?.liveClass?.zoomMeetingId) {
-    throw new AppError("This lesson has no live session to join", 404);
-  }
-
-  const account = lesson.liveClass.zoomAccountId
-    ? await prisma.zoomAccount.findUnique({ where: { id: lesson.liveClass.zoomAccountId } })
-    : null;
-
-  if (!account?.sdkKey || !account?.sdkSecret) {
-    return { configured: false as const };
-  }
-
-  const role = lesson.liveClass.mentorId === userId ? 1 : 0;
-  const signature = generateMeetingSdkSignature(account.sdkKey, account.sdkSecret, lesson.liveClass.zoomMeetingId, role);
-
-  return {
-    configured: true as const,
-    signature,
-    sdkKey: account.sdkKey,
-    meetingNumber: lesson.liveClass.zoomMeetingId,
-    passcode: lesson.liveClass.zoomPasscode,
-    role,
-  };
-}
 
 export async function updateLiveClass(
   lessonId: string,

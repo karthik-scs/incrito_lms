@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma";
 import { AppError } from "../utils/AppError";
 import { notifyUser } from "./notification.service";
+import { createZohoMeeting } from "../lib/zoho";
 
 const SLOT_INCLUDE = {
   mentor: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } },
@@ -92,7 +93,26 @@ export async function confirmRequest(slotId: string, requestId: string, mentorId
 
   const confirmedCount = slot.requests.length + 1;
   if (confirmedCount >= slot.maxMembers) {
-    await prisma.groupCallSlot.update({ where: { id: slotId }, data: { status: "FULL" } });
+    // Auto-schedule a Zoho meeting when the slot becomes full
+    let meetingUrl: string | null = null;
+    if (!slot.meetingUrl) {
+      const zohoAccount = await prisma.userLiveAccount.findUnique({
+        where: { userId_provider: { userId: slot.mentorId, provider: "ZOHO" } },
+      });
+      if (zohoAccount?.isActive) {
+        const endTime = new Date(slot.scheduledAt.getTime() + slot.durationMinutes * 60 * 1000);
+        const meeting = await createZohoMeeting(zohoAccount.id, {
+          topic: slot.topic ?? "Group Session",
+          startTime: slot.scheduledAt,
+          endTime,
+        }).catch(() => null);
+        if (meeting) meetingUrl = meeting.joinUrl;
+      }
+    }
+    await prisma.groupCallSlot.update({
+      where: { id: slotId },
+      data: { status: "FULL", ...(meetingUrl ? { meetingUrl } : {}) },
+    });
   }
 
   const when = req.slot.scheduledAt.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });

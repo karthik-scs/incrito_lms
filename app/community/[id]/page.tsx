@@ -854,7 +854,7 @@ export default function CommunityDetailPage() {
             <input
               value={eventLocation}
               onChange={(e) => setEventLocation(e.target.value)}
-              placeholder="e.g. Zoom link, room name"
+              placeholder="e.g. meeting link, room name"
               className="mt-1 w-full bg-surface border border-border rounded-md px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
             />
           </div>

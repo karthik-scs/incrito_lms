@@ -1,6 +1,6 @@
 # Incrito LMS — QA Handover Document
 
-**Version:** MVP 1.0  
+**Version:** 0.4.0  
 **Date:** July 2026  
 **Prepared for:** QA Team  
 **Application:** Incrito LMS (cohort-based learning management system)
@@ -54,7 +54,7 @@ All demo users share the password: **`Demo@1234`**
 | Cache / Sessions | Redis |
 | File Storage | AWS S3 (ap-southeast-2) |
 | Auth | JWT (access token) + httpOnly refresh cookie |
-| Live Classes | Zoom (Server-to-Server OAuth) + Zoho Meeting |
+| Live Classes | Zoho Meeting (personal connected accounts) |
 | Video Lessons | YouTube embed (custom player) + native video |
 | PDF Generation | html2canvas + jsPDF |
 
@@ -86,9 +86,9 @@ All demo users share the password: **`Demo@1234`**
 - **Enrollments** — list all, change plan, unenrol
 - **Certificate Templates** — upload design image, manage templates
 - **Community** — create communities, manage members
-- **Settings** — Profile, Notifications, Email (SMTP), Security Policy, Roles & Permissions, WhatsApp API, Zoom Accounts, Plans, Live Class Accounts
+- **Settings** — Profile, Notifications, Email (SMTP), Security Policy, Roles & Permissions (visual permission matrix), Plans, Live Class Accounts (Zoho only)
 - **Reports** — placeholder (not wired to live data)
-- **Announcements** — placeholder (not built)
+- **Announcements** — Admin can broadcast to all; Mentors and Cohort Managers send to their assigned cohort members only
 
 ### 5.4 Course Delivery (Student-facing)
 - My Courses (`/courses`) — active / completed tabs
@@ -104,10 +104,10 @@ All demo users share the password: **`Demo@1234`**
 
 ### 5.5 Live Classes
 - Scheduled from admin curriculum page; host can be Admin/Mentor/Cohort Manager
-- Zoom integration (shared account pool + personal connected accounts)
-- Zoho Meeting integration (personal connected accounts)
-- Webhooks: meeting.started → LIVE, meeting.ended → COMPLETED (auto, no manual step)
-- Zoom recording auto-downloaded on webhook; Zoho recording manually uploaded
+- Zoho Meeting integration (personal connected accounts only — Zoom has been removed)
+- When a mentor confirms a 1:1 booking, a Zoho Meeting is auto-created if the mentor has a connected Zoho account
+- When a group call slot reaches full capacity, a Zoho Meeting is auto-created for that slot
+- Sessions whose `endTime` has passed are automatically shown as **COMPLETED** (computed; no manual status change required)
 - "Join" button enabled 10 min before start and while status = LIVE
 - Attendance: lesson marked complete when student joins
 
@@ -152,9 +152,11 @@ All demo users share the password: **`Demo@1234`**
 
 ### 5.12 Mentor / Cohort Manager Pages
 - My Cohorts (`/cohorts`) — cohort cards filtered to assigned cohorts
+- Courses (`/mentor/courses` or `/cohort-manager/courses`) — only shows courses assigned to their cohorts; no create/edit/publish access
 - Sessions (`/sessions`) — upcoming and past live classes
+- Announcements (`/admin/announcements`) — create and manage announcements visible to their cohort members only
 - Settings (`/settings`) — Profile, Notifications, Security (personal only; no platform policy)
-- Live Class Accounts (`/settings` → Live Class Accounts) — connect personal Zoom / Zoho account
+- Live Class Accounts (`/settings` → Live Class Accounts) — connect personal Zoho account
 - Discussion, Leaderboard, Community — same as student view but no enrollment required
 
 ### 5.13 Plans (ICAP / Intensive Pro)
@@ -175,13 +177,13 @@ All demo users share the password: **`Demo@1234`**
 
 | Item | Status |
 |---|---|
-| Zoom in-app embedding | Falls back to "open in new tab" until Meeting SDK key/secret configured |
+| Zoom integration | Removed — Zoho Meeting is the only live class provider |
 | Google Calendar sync / export | UI disabled — not built |
 | Attendance model | Schema exists, not wired to any UI |
 | Payment / self-serve plan upgrade | Plan changes are admin-only; no payment gateway |
 | Access expiry automated notifications | Expiry enforced on access, no "expiring soon" email |
 | Analytics / Reports page | Placeholder only |
-| Announcements | Placeholder only |
+| Announcements | Fully built — Admin broadcasts to all; Mentor/CM broadcast to their cohort members |
 | Support ticketing | Static page only |
 | Recommended courses widget | Removed (no recommendation engine) |
 | Certificate PDF customization | Template design uploaded as image; PDF uses html2canvas snapshot |
@@ -202,8 +204,12 @@ Run these in order to confirm the deployment is healthy before detailed testing:
 5. Log in as Admin → issue a certificate to the 100% student
 6. Log in as the student → download the certificate PDF → verify the public link
 7. Log in as Mentor → check Sessions page → check Chat page
-8. Log in as student → book a 1:1 session → log in as mentor → confirm the booking
-9. Upload a profile photo and confirm it displays everywhere (topbar, sidebar)
+8. Log in as student → book a 1:1 session → log in as mentor → confirm the booking → verify Zoho join URL appears on the booking
+9. Log in as Mentor → navigate to `/mentor/courses` → confirm only assigned courses are visible (no New/Edit buttons)
+10. Log in as Mentor → go to Announcements → create an announcement → confirm only cohort members receive the notification
+11. Log in as Admin → Settings → Roles & Permissions → verify permission matrix (Read/Edit/Delete/Publish columns) is visible per role
+12. Log in as Student → open a course with a certificate → click Download → confirm PDF saves without "tainted canvas" error
+13. Upload a profile photo and confirm it displays everywhere (topbar, sidebar)
 
 ---
 

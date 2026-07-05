@@ -44,9 +44,10 @@ const NAV_ITEMS: Record<SidebarRole, NavItem[]> = {
   Mentor: [
     { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { label: "My Cohorts", href: "/cohorts", icon: GraduationCap },
-    { label: "Courses", href: "/admin/courses", icon: BookOpen },
+    { label: "Courses", href: "/mentor/courses", icon: BookOpen },
     { label: "Sessions", href: "/sessions", icon: Video },
     { label: "Calendar", href: "/calendar", icon: Calendar },
+    { label: "Announcements", href: "/admin/announcements", icon: Megaphone },
     { label: "Discussions", href: "/community", icon: MessageSquare },
     { label: "Chat", href: "/chat", icon: MessageCircle },
     { label: "Settings", href: "/settings", icon: Settings },
@@ -54,9 +55,10 @@ const NAV_ITEMS: Record<SidebarRole, NavItem[]> = {
   "Cohort Manager": [
     { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { label: "My Cohorts", href: "/cohorts", icon: GraduationCap },
-    { label: "Courses", href: "/admin/courses", icon: BookOpen },
+    { label: "Courses", href: "/cohort-manager/courses", icon: BookOpen },
     { label: "Sessions", href: "/sessions", icon: Video },
     { label: "Calendar", href: "/calendar", icon: Calendar },
+    { label: "Announcements", href: "/admin/announcements", icon: Megaphone },
     { label: "Discussions", href: "/community", icon: MessageSquare },
     { label: "Chat", href: "/chat", icon: MessageCircle },
     { label: "Settings", href: "/settings", icon: Settings },

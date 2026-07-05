@@ -22,6 +22,7 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { apiJson } from "@/lib/authClient";
 import { CertificateCanvas } from "@/components/certificates/CertificateCanvas";
 import { CertificateViewModal } from "@/components/certificates/CertificateViewModal";
+import { downloadAsPdf } from "@/lib/certificateDownload";
 import type { CertificateLayer, CertificateVariables } from "@/lib/certificateLayers";
 
 type Certificate = {
@@ -104,12 +105,7 @@ function CertificateAllocationCard({
     if (!canvasRef.current || !certificate) return;
     setDownloading(true);
     try {
-      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas"), import("jspdf")]);
-      const canvas = await html2canvas(canvasRef.current, { scale: 2, useCORS: true });
-      const imageData = canvas.toDataURL("image/png");
-      const pdf = new jsPDF({ orientation: "landscape", unit: "px", format: [canvas.width, canvas.height] });
-      pdf.addImage(imageData, "PNG", 0, 0, canvas.width, canvas.height);
-      pdf.save(`${certificate.certificateNumber}.pdf`);
+      await downloadAsPdf(canvasRef.current, `${certificate.certificateNumber}.pdf`);
     } catch (err) {
       window.alert(err instanceof Error ? err.message : "Could not generate the PDF");
     } finally {

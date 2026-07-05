@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma";
 import { AppError } from "../utils/AppError";
 import { notifyUser } from "./notification.service";
+import { createZohoMeeting } from "../lib/zoho";
 
 function dmKey(a: string, b: string) {
   return [a, b].sort().join("_");
@@ -95,15 +96,32 @@ export async function confirmBooking(bookingId: string, mentorId: string, meetin
   if (!booking || booking.mentorId !== mentorId) throw new AppError("Booking not found", 404);
   if (booking.status !== "PENDING") throw new AppError("Only pending bookings can be confirmed", 400);
 
+  // Auto-schedule a Zoho meeting using the mentor's connected Zoho account (if any)
+  let resolvedMeetingUrl = meetingUrl ?? null;
+  if (!resolvedMeetingUrl) {
+    const zohoAccount = await prisma.userLiveAccount.findUnique({
+      where: { userId_provider: { userId: mentorId, provider: "ZOHO" } },
+    });
+    if (zohoAccount?.isActive) {
+      const endTime = new Date(booking.scheduledAt.getTime() + booking.durationMinutes * 60 * 1000);
+      const meeting = await createZohoMeeting(zohoAccount.id, {
+        topic: booking.topic ?? "1:1 Session",
+        startTime: booking.scheduledAt,
+        endTime,
+      }).catch(() => null);
+      if (meeting) resolvedMeetingUrl = meeting.joinUrl;
+    }
+  }
+
   const updated = await prisma.mentorBooking.update({
     where: { id: bookingId },
-    data: { status: "CONFIRMED", meetingUrl: meetingUrl ?? null },
+    data: { status: "CONFIRMED", meetingUrl: resolvedMeetingUrl },
   });
 
   await notifyUser(booking.studentId, "ANNOUNCEMENT", "Session confirmed", "Your 1:1 session with your mentor has been confirmed.", { action: "view_booking", bookingId: booking.id });
 
   const when = booking.scheduledAt.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-  const urlNote = meetingUrl ? ` · Join: ${meetingUrl}` : "";
+  const urlNote = resolvedMeetingUrl ? ` · Join: ${resolvedMeetingUrl}` : "";
   await postBookingMessage(mentorId, booking.studentId, `✅ 1:1 session confirmed: ${when}${urlNote}`, "BOOKING_CONFIRMED", bookingId);
 
   return updated;

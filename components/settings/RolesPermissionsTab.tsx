@@ -28,6 +28,14 @@ const ACTION_LABELS: Record<string, string> = {
 
 const ACTION_ORDER = ["read", "create", "write", "update", "delete", "publish"];
 
+// Matrix column definitions — each column maps to one or more action keys
+const MATRIX_COLS = [
+  { label: "Read",    keys: ["read"] },
+  { label: "Edit",    keys: ["create", "write", "update"] },
+  { label: "Delete",  keys: ["delete"] },
+  { label: "Publish", keys: ["publish"] },
+] as const;
+
 function actionLabel(key: string) {
   const action = key.split(":")[1] ?? key;
   return ACTION_LABELS[action] ?? action;
@@ -55,6 +63,55 @@ function groupByResource(permissions: Permission[]) {
       return [resource, sorted] as const;
     })
     .sort(([a], [b]) => a.localeCompare(b));
+}
+
+function PermissionMatrix({ rolePermissions }: { rolePermissions: { permission: Permission }[] }) {
+  const grantedKeys = new Set(rolePermissions.map((p) => p.permission.key));
+  const modules = groupByResource(rolePermissions.map((p) => p.permission));
+  if (modules.length === 0) return <p className="text-xs text-text-muted italic">No permissions assigned</p>;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs border-collapse">
+        <thead>
+          <tr>
+            <th className="text-left font-medium text-text-muted py-1 pr-3 w-28">Module</th>
+            {MATRIX_COLS.map((col) => (
+              <th key={col.label} className="text-center font-medium text-text-muted py-1 px-2 w-16">
+                {col.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {modules.map(([resource, perms]) => {
+            const permKeys = new Set(perms.map((p) => p.key));
+            return (
+              <tr key={resource} className="border-t border-border-light">
+                <td className="py-1 pr-3 font-medium text-text-secondary">{moduleLabel(resource)}</td>
+                {MATRIX_COLS.map((col) => {
+                  const hasAny = col.keys.some((action) => {
+                    const key = `${resource}:${action}`;
+                    return permKeys.has(key) && grantedKeys.has(key);
+                  });
+                  return (
+                    <td key={col.label} className="py-1 px-2 text-center">
+                      {hasAny ? (
+                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-success/10 text-success">
+                          ✓
+                        </span>
+                      ) : (
+                        <span className="inline-block w-5 h-5 rounded-full bg-surface-secondary" />
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 export function RolesPermissionsTab() {
@@ -231,12 +288,8 @@ export function RolesPermissionsTab() {
                 </div>
               )}
             </div>
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {role.permissions.map((p) => (
-                <Badge key={p.permission.id} variant="info">
-                  {moduleLabel(p.permission.key.split(":")[0])} · {actionLabel(p.permission.key)}
-                </Badge>
-              ))}
+            <div className="mt-3">
+              <PermissionMatrix rolePermissions={role.permissions} />
             </div>
           </div>
         ))}

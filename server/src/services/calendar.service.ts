@@ -30,6 +30,7 @@ export async function getMyCalendarEvents(
       type: "LIVE",
       module: { courseId: { in: courseIds } },
       liveClass: {
+        status: { notIn: ["CANCELLED", "COMPLETED"] },
         ...(filter.mentorId ? { mentorId: filter.mentorId } : {}),
         ...(filter.from ? { startTime: { gte: filter.from } } : {}),
         ...(filter.to ? { startTime: { lte: filter.to } } : {}),

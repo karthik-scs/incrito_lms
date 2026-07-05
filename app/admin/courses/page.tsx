@@ -11,6 +11,7 @@ import { Select } from "@/components/ui/Select";
 import { MultiSelect } from "@/components/ui/MultiSelect";
 import { FileUploadField } from "@/components/ui/FileUploadField";
 import { apiJson } from "@/lib/authClient";
+import { useAuth } from "@/components/providers/AuthProvider";
 
 type Category = { id: string; name: string; slug: string };
 type Tag = { id: string; name: string; slug: string };
@@ -50,7 +51,11 @@ const STATUS_VARIANT = {
 } as const;
 
 export default function CoursesPage() {
+  const { user } = useAuth();
+  const isMentor = user?.role === "Mentor";
+
   const [courses, setCourses] = useState<Course[]>([]);
+  const [assignedCourseIds, setAssignedCourseIds] = useState<Set<string> | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [mentors, setMentors] = useState<UserOption[]>([]);
@@ -76,12 +81,21 @@ export default function CoursesPage() {
   async function loadAll() {
     setLoading(true);
     setError(null);
-    const [coursesRes, categoriesRes, tagsRes, usersRes] = await Promise.all([
+    const requests: Promise<unknown>[] = [
       apiJson<Course[]>("/api/courses", { skipAuth: true }),
       apiJson<Category[]>("/api/categories", { skipAuth: true }),
       apiJson<Tag[]>("/api/tags", { skipAuth: true }),
       apiJson<UserOption[]>("/api/users"),
-    ]);
+    ];
+    if (isMentor) requests.push(apiJson<{ course: { id: string } }[]>("/api/cohorts"));
+
+    const [coursesRes, categoriesRes, tagsRes, usersRes, cohortsRes] = await Promise.all(requests) as [
+      Awaited<ReturnType<typeof apiJson<Course[]>>>,
+      Awaited<ReturnType<typeof apiJson<Category[]>>>,
+      Awaited<ReturnType<typeof apiJson<Tag[]>>>,
+      Awaited<ReturnType<typeof apiJson<UserOption[]>>>,
+      Awaited<ReturnType<typeof apiJson<{ course: { id: string } }[]>>> | undefined,
+    ];
 
     if (coursesRes.ok) setCourses(coursesRes.data);
     else setError(coursesRes.message);
@@ -89,6 +103,10 @@ export default function CoursesPage() {
     if (categoriesRes.ok) setCategories(categoriesRes.data);
     if (tagsRes.ok) setTags(tagsRes.data);
     if (usersRes.ok) setMentors(usersRes.data.filter((u) => u.role.name === "Mentor"));
+
+    if (isMentor && cohortsRes?.ok) {
+      setAssignedCourseIds(new Set(cohortsRes.data.map((c) => c.course.id)));
+    }
 
     setLoading(false);
   }
@@ -189,6 +207,13 @@ export default function CoursesPage() {
     [mentors]
   );
 
+  const visibleCourses = useMemo(() => {
+    if (isMentor && assignedCourseIds !== null) {
+      return courses.filter((c) => assignedCourseIds.has(c.id));
+    }
+    return courses;
+  }, [courses, isMentor, assignedCourseIds]);
+
   return (
     <AdminLayout>
       <div className="flex items-center justify-between">
@@ -198,10 +223,12 @@ export default function CoursesPage() {
             Assign a category, tags, certificate template and mentor to every course.
           </p>
         </div>
-        <Button onClick={openCreate}>
-          <Plus size={16} />
-          New Course
-        </Button>
+        {!isMentor && (
+          <Button onClick={openCreate}>
+            <Plus size={16} />
+            New Course
+          </Button>
+        )}
       </div>
 
       {loading && <p className="mt-6 text-sm text-text-secondary">Loading…</p>}
@@ -214,7 +241,7 @@ export default function CoursesPage() {
       )}
 
       <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {courses.map((course) => (
+        {visibleCourses.map((course) => (
           <div key={course.id} className="bg-surface border border-border rounded-2xl overflow-hidden flex flex-col">
             <div className="relative aspect-[16/9] bg-accent-light flex items-center justify-center">
               {course.thumbnailUrl ? (
@@ -255,13 +282,15 @@ export default function CoursesPage() {
               </div>
 
               <div className="flex items-center gap-2 mt-auto pt-1">
-                <button
-                  onClick={() => openEdit(course)}
-                  aria-label="Edit course"
-                  className="flex items-center justify-center bg-surface border border-border text-text-primary rounded-md px-3 py-2 hover:bg-surface-secondary transition-colors"
-                >
-                  <Pencil size={15} />
-                </button>
+                {!isMentor && (
+                  <button
+                    onClick={() => openEdit(course)}
+                    aria-label="Edit course"
+                    className="flex items-center justify-center bg-surface border border-border text-text-primary rounded-md px-3 py-2 hover:bg-surface-secondary transition-colors"
+                  >
+                    <Pencil size={15} />
+                  </button>
+                )}
                 <Link
                   href={`/courses/${course.slug}/discussion`}
                   aria-label="Open discussion"

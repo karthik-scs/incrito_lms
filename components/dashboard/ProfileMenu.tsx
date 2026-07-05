@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { LogOut, User } from "lucide-react";
 import { logout } from "@/lib/logout";
 import { Avatar } from "@/components/ui/Avatar";
@@ -14,6 +15,7 @@ export function ProfileMenu({
   role: string;
   avatarUrl?: string | null;
 }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -41,7 +43,7 @@ export function ProfileMenu({
           </div>
           <button
             type="button"
-            onClick={() => setOpen(false)}
+            onClick={() => { setOpen(false); router.push("/settings"); }}
             className="w-full flex items-center gap-2 px-3 py-2 text-sm text-text-primary hover:bg-surface-secondary transition-colors"
           >
             <User size={16} />

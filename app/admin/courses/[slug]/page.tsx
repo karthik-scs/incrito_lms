@@ -208,11 +208,11 @@ export default function AdminCourseCurriculumPage() {
     const result = editingModule
       ? await apiJson(`/api/modules/${editingModule.id}`, {
           method: "PATCH",
-          body: JSON.stringify({ title: moduleTitle, planAccess: modulePlanAccess }),
+          body: JSON.stringify({ title: moduleTitle }),
         })
       : await apiJson("/api/modules", {
           method: "POST",
-          body: JSON.stringify({ courseId: course.id, title: moduleTitle, planAccess: modulePlanAccess }),
+          body: JSON.stringify({ courseId: course.id, title: moduleTitle }),
         });
 
     setModuleSubmitting(false);
@@ -590,7 +590,11 @@ export default function AdminCourseCurriculumPage() {
           </div>
 
           <div className="mt-6">
-            <CourseCertificatesPanel courseId={course.id} modules={course.modules.map((m) => ({ id: m.id, title: m.title }))} />
+            <CourseCertificatesPanel
+              courseId={course.id}
+              modules={course.modules.map((m) => ({ id: m.id, title: m.title }))}
+              canManage={user?.role !== "Mentor"}
+            />
           </div>
 
           <div className="mt-6 flex flex-col gap-4">
@@ -801,15 +805,6 @@ export default function AdminCourseCurriculumPage() {
               placeholder="Module 1: Foundations"
               className="mt-1 w-full bg-surface border border-border rounded-md px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
             />
-          </div>
-          <div>
-            <label className="text-sm font-medium text-text-secondary">Plan access</label>
-            <div className="mt-1">
-              <Select value={modulePlanAccess} onChange={(v) => setModulePlanAccess(v as PlanAccess)} options={PLAN_ACCESS_OPTIONS} />
-            </div>
-            <p className="text-xs text-text-muted mt-1">
-              Restricting this module also locks all its lessons for students on the other plan.
-            </p>
           </div>
           {moduleError && <p className="text-sm text-error">{moduleError}</p>}
           <div className="flex justify-end gap-2 mt-2">

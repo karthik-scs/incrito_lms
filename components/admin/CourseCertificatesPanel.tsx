@@ -31,7 +31,7 @@ const PLAN_ACCESS_OPTIONS = [
   { value: "INTENSIVE_PRO", label: "Intensive Pro only" },
 ];
 
-export function CourseCertificatesPanel({ courseId, modules }: { courseId: string; modules: ModuleOption[] }) {
+export function CourseCertificatesPanel({ courseId, modules, canManage = true }: { courseId: string; modules: ModuleOption[]; canManage?: boolean }) {
   const [certificates, setCertificates] = useState<CourseCertificate[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
@@ -133,9 +133,11 @@ export function CourseCertificatesPanel({ courseId, modules }: { courseId: strin
             A course can award more than one certificate — overall completion, or finishing specific modules.
           </p>
         </div>
-        <Button onClick={openCreate} className="px-3 py-1.5 text-xs">
-          <Plus size={14} /> Add Certificate
-        </Button>
+        {canManage && (
+          <Button onClick={openCreate} className="px-3 py-1.5 text-xs">
+            <Plus size={14} /> Add Certificate
+          </Button>
+        )}
       </div>
 
       {loading && <p className="text-sm text-text-secondary mt-3">Loading…</p>}
@@ -175,12 +177,16 @@ export function CourseCertificatesPanel({ courseId, modules }: { courseId: strin
               >
                 <Palette size={14} />
               </Link>
-              <button onClick={() => openEdit(cert)} aria-label="Edit certificate" className="text-text-muted hover:text-accent rounded-md p-1.5">
-                <Pencil size={14} />
-              </button>
-              <button onClick={() => handleDelete(cert)} aria-label="Delete certificate" className="text-text-muted hover:text-error rounded-md p-1.5">
-                <Trash2 size={14} />
-              </button>
+              {canManage && (
+                <>
+                  <button onClick={() => openEdit(cert)} aria-label="Edit certificate" className="text-text-muted hover:text-accent rounded-md p-1.5">
+                    <Pencil size={14} />
+                  </button>
+                  <button onClick={() => handleDelete(cert)} aria-label="Delete certificate" className="text-text-muted hover:text-error rounded-md p-1.5">
+                    <Trash2 size={14} />
+                  </button>
+                </>
+              )}
             </div>
           </div>
         ))}

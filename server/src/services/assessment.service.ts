@@ -24,12 +24,14 @@ type AssessmentInput = {
 
 const summaryInclude = { _count: { select: { questions: true } } } as const;
 
-export function listAssessments(filter: { courseId?: string; moduleId?: string; lessonId?: string }) {
-  return prisma.assessment.findMany({
+export async function listAssessments(filter: { courseId?: string; moduleId?: string; lessonId?: string }) {
+  const rows = await prisma.assessment.findMany({
     where: filter,
     include: summaryInclude,
     orderBy: { createdAt: "desc" },
   });
+  const seen = new Set<string>();
+  return rows.filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
 }
 
 export async function createAssessment(data: AssessmentInput, createdById: string) {

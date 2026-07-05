@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Plus, X } from "lucide-react";
 import { AdminLayout } from "@/components/layout/AdminLayout";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Select } from "@/components/ui/Select";
@@ -55,6 +56,8 @@ const ENROLLMENT_STATUS_VARIANT = {
 } as const;
 
 export default function CohortDetailPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "Admin";
   const params = useParams<{ id: string }>();
   const cohortId = params.id;
 
@@ -270,23 +273,29 @@ export default function CohortDetailPage() {
                       </p>
                       <p className="text-xs text-text-muted">{m.user.email}</p>
                     </div>
-                    <button onClick={() => handleRemoveManager(m.user.id)} aria-label="Remove manager" className="text-text-muted hover:text-error p-1">
-                      <X size={14} />
-                    </button>
+                    {isAdmin && (
+                      <button onClick={() => handleRemoveManager(m.user.id)} aria-label="Remove manager" className="text-text-muted hover:text-error p-1">
+                        <X size={14} />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
 
-              <div className="mt-4 flex gap-2">
-                <div className="flex-1">
-                  <Select value={newManagerId} onChange={setNewManagerId} options={managerOptions} placeholder="Select a manager" />
-                </div>
-                <Button onClick={handleAddManager} disabled={!newManagerId}>
-                  <Plus size={16} />
-                  Add
-                </Button>
-              </div>
-              {managerError && <p className="mt-2 text-sm text-error">{managerError}</p>}
+              {isAdmin && (
+                <>
+                  <div className="mt-4 flex gap-2">
+                    <div className="flex-1">
+                      <Select value={newManagerId} onChange={setNewManagerId} options={managerOptions} placeholder="Select a manager" />
+                    </div>
+                    <Button onClick={handleAddManager} disabled={!newManagerId}>
+                      <Plus size={16} />
+                      Add
+                    </Button>
+                  </div>
+                  {managerError && <p className="mt-2 text-sm text-error">{managerError}</p>}
+                </>
+              )}
             </div>
           </div>
 

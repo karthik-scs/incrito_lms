@@ -133,7 +133,7 @@ export async function signup(input: SignupInput): Promise<{ email: string }> {
       passwordHash,
       firstName: input.firstName,
       lastName: input.lastName,
-      mobileNumber: input.mobileNumber,
+      mobileNumber: input.mobileNumber || undefined,
       roleId: studentRole.id,
       status: "INVITED",
     },
@@ -196,7 +196,8 @@ export async function updateProfile(
   userId: string,
   data: { firstName?: string; lastName?: string; mobileNumber?: string; avatarUrl?: string }
 ) {
-  const user = await prisma.user.update({ where: { id: userId }, data });
+  const sanitised = { ...data, mobileNumber: data.mobileNumber || undefined };
+  const user = await prisma.user.update({ where: { id: userId }, data: sanitised });
   return {
     id: user.id,
     email: user.email,

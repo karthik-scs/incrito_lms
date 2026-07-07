@@ -9,6 +9,13 @@ const ROLE_NAME_BY_AUDIENCE: Record<string, string | null> = {
   COHORT_MANAGERS: "Cohort Manager",
 };
 
+async function countTargetUsers(audience: string): Promise<number> {
+  const roleName = ROLE_NAME_BY_AUDIENCE[audience];
+  return prisma.user.count({
+    where: roleName ? { role: { name: roleName } } : undefined,
+  });
+}
+
 async function getTargetUserIds(audience: string) {
   const roleName = ROLE_NAME_BY_AUDIENCE[audience];
   const users = await prisma.user.findMany({
@@ -75,7 +82,7 @@ export async function listAnnouncements(requesterId: string, requesterRole: stri
       ...a,
       recipientCount: a.cohortId
         ? (await prisma.enrollment.count({ where: { cohortId: a.cohortId } }))
-        : (await getTargetUserIds(a.audience)).length,
+        : (await countTargetUsers(a.audience ?? "ALL")),
     }))
   );
 }

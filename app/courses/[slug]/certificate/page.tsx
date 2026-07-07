@@ -211,6 +211,8 @@ export default function CourseCertificatePage() {
   const [error, setError] = useState<string | null>(null);
   const [viewingCert, setViewingCert] = useState<{ cert: Certificate; entry?: EligibilityEntry } | null>(null);
 
+  const [isDropped, setIsDropped] = useState(false);
+
   async function load() {
     setLoading(true);
     setError(null);
@@ -222,22 +224,42 @@ export default function CourseCertificatePage() {
       completedLessons: number;
       completionPercentage: number;
     }>(`/api/me/courses/${params.slug}/roadmap`);
+
+    let resolvedCohortId: string | null = null;
+
     if (!roadmapRes.ok) {
-      setError(roadmapRes.message);
-      setLoading(false);
-      return;
+      // If dropped from cohort (403), try to resolve cohortId from an existing certificate
+      const certsRes = await apiJson<Certificate[]>("/api/certificates/me");
+      if (certsRes.ok) {
+        const match = certsRes.data.find((c) => c.cohort.course.slug === params.slug);
+        if (match) {
+          resolvedCohortId = match.cohort.id ?? null;
+          setCourseTitle(match.cohort.course.title);
+          setCohortId(resolvedCohortId);
+          setIsDropped(true);
+        }
+      }
+      if (!resolvedCohortId) {
+        setError(roadmapRes.message);
+        setLoading(false);
+        return;
+      }
+    } else {
+      setCourseTitle(roadmapRes.data.course.title);
+      resolvedCohortId = roadmapRes.data.cohort.id;
+      setCohortId(resolvedCohortId);
+      setTotalLessons(roadmapRes.data.totalLessons);
+      setCompletedLessons(roadmapRes.data.completedLessons);
+      setCompletionPercentage(roadmapRes.data.completionPercentage);
     }
-    setCourseTitle(roadmapRes.data.course.title);
-    setCohortId(roadmapRes.data.cohort.id);
-    setTotalLessons(roadmapRes.data.totalLessons);
-    setCompletedLessons(roadmapRes.data.completedLessons);
-    setCompletionPercentage(roadmapRes.data.completionPercentage);
 
     const [eligibilityRes, certificatesRes, leaderboardRes, assessmentsRes] = await Promise.all([
-      apiJson<EligibilityEntry[]>(`/api/certificates/eligibility?cohortId=${roadmapRes.data.cohort.id}`),
+      apiJson<EligibilityEntry[]>(`/api/certificates/eligibility?cohortId=${resolvedCohortId}`),
       apiJson<Certificate[]>(`/api/certificates/me`),
-      apiJson<{ userId: string; points: number }[]>(`/api/leaderboard?cohortId=${roadmapRes.data.cohort.id}`),
-      apiJson<{ id: string; status: string }[]>(`/api/assessments?courseId=${roadmapRes.data.course.id}`),
+      apiJson<{ userId: string; points: number }[]>(`/api/leaderboard?cohortId=${resolvedCohortId}`),
+      roadmapRes.ok
+        ? apiJson<{ id: string; status: string }[]>(`/api/assessments?courseId=${roadmapRes.data.course.id}`)
+        : Promise.resolve({ ok: false as const, message: "", data: [] }),
     ]);
 
     if (eligibilityRes.ok) setEntries(eligibilityRes.data);
@@ -309,6 +331,12 @@ export default function CourseCertificatePage() {
           </span>
           <p className="text-base font-semibold text-text-primary">No certificates set up for this course yet</p>
           <p className="text-sm text-text-secondary">Check back once your instructor allocates one.</p>
+        </div>
+      )}
+
+      {!loading && !error && isDropped && (
+        <div className="mt-6 bg-warning/10 border border-warning/30 rounded-xl px-4 py-3 text-sm text-warning">
+          You have been removed from this cohort. Your earned certificates are still available below.
         </div>
       )}
 

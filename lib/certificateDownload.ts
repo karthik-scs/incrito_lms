@@ -18,9 +18,14 @@ async function toDataUrl(src: string): Promise<string> {
  * Images that cannot be fetched are replaced with a blank 1×1 PNG so they
  * don't taint the canvas and don't throw "wrong PNG signature".
  */
+/** Minimum export width ensures the PDF matches the full-size view regardless of where the source element renders. */
+const PDF_EXPORT_WIDTH = 1400;
+
 export async function buildOffscreenCanvas(source: HTMLElement): Promise<HTMLElement> {
-  const w = source.offsetWidth || 800;
-  const h = source.offsetHeight || Math.round(w / 1.41);
+  const w = Math.max(source.offsetWidth || PDF_EXPORT_WIDTH, PDF_EXPORT_WIDTH);
+  const h = source.offsetHeight
+    ? Math.round((source.offsetHeight / source.offsetWidth) * w)
+    : Math.round(w / 1.41);
 
   const clone = source.cloneNode(true) as HTMLElement;
   clone.style.cssText = [
@@ -31,6 +36,7 @@ export async function buildOffscreenCanvas(source: HTMLElement): Promise<HTMLEle
     `height:${h}px`,
     "pointer-events:none",
     "overflow:hidden",
+    "font-size:16px",
   ].join(";");
   document.body.appendChild(clone);
 

@@ -41,6 +41,7 @@ export async function getEligibilityList(userId: string, cohortId: string) {
   if (!enrollment) {
     throw new AppError("You are not enrolled in this cohort", 403);
   }
+  const isDropped = enrollment.status === "DROPPED";
 
   const cohort = await prisma.cohort.findUniqueOrThrow({ where: { id: cohortId } });
   const courseCertificates = await prisma.courseCertificate.findMany({
@@ -64,10 +65,12 @@ export async function getEligibilityList(userId: string, cohortId: string) {
         const completionPercentage = progress?.completionPercentage ?? 0;
         return {
           courseCertificate,
-          eligible: planEligible && completionPercentage >= 100,
-          progressLabel: planEligible
-            ? `${completionPercentage}% complete`
-            : `Requires ${courseCertificate.planAccess === "INTENSIVE_PRO" ? "Intensive Pro" : "ICAP"} plan`,
+          eligible: !isDropped && planEligible && completionPercentage >= 100,
+          progressLabel: isDropped
+            ? "You have been removed from this cohort"
+            : planEligible
+              ? `${completionPercentage}% complete`
+              : `Requires ${courseCertificate.planAccess === "INTENSIVE_PRO" ? "Intensive Pro" : "ICAP"} plan`,
           certificate: existing,
         };
       }
@@ -76,10 +79,12 @@ export async function getEligibilityList(userId: string, cohortId: string) {
       const moduleProgress = await computeModuleSetCompletion(userId, moduleIds);
       return {
         courseCertificate,
-        eligible: planEligible && moduleProgress.completed,
-        progressLabel: planEligible
-          ? `${moduleProgress.completedLessons}/${moduleProgress.totalLessons} lessons in required modules`
-          : `Requires ${courseCertificate.planAccess === "INTENSIVE_PRO" ? "Intensive Pro" : "ICAP"} plan`,
+        eligible: !isDropped && planEligible && moduleProgress.completed,
+        progressLabel: isDropped
+          ? "You have been removed from this cohort"
+          : planEligible
+            ? `${moduleProgress.completedLessons}/${moduleProgress.totalLessons} lessons in required modules`
+            : `Requires ${courseCertificate.planAccess === "INTENSIVE_PRO" ? "Intensive Pro" : "ICAP"} plan`,
         certificate: existing,
       };
     })

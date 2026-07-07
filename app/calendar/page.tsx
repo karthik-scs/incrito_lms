@@ -127,7 +127,11 @@ export default function CalendarPage() {
   const nextLive = filtered.find((e) => e.type === "LIVE_CLASS" && e.isLiveNow) ?? filtered.find((e) => e.type === "LIVE_CLASS" && new Date(e.startTime) > today);
 
   function goToday() {
-    setAnchorDate(new Date());
+    setAnchorDate((prev) => {
+      const now = new Date();
+      // Avoid a no-op state update (and the resulting event re-fetch) when already on today
+      return prev.toDateString() === now.toDateString() ? prev : now;
+    });
   }
 
   function navigate(direction: 1 | -1) {
@@ -204,15 +208,16 @@ export default function CalendarPage() {
                 ))}
               </div>
               <button
+                type="button"
                 onClick={goToday}
                 className="bg-surface border border-border text-text-primary rounded-md px-3 py-1.5 text-xs font-medium hover:bg-surface-secondary"
               >
                 Today
               </button>
-              <button onClick={() => navigate(-1)} aria-label="Previous" className="p-1.5 rounded-md border border-border text-text-muted hover:bg-surface-secondary">
+              <button type="button" onClick={() => navigate(-1)} aria-label="Previous" className="p-1.5 rounded-md border border-border text-text-muted hover:bg-surface-secondary">
                 <ChevronLeft size={14} />
               </button>
-              <button onClick={() => navigate(1)} aria-label="Next" className="p-1.5 rounded-md border border-border text-text-muted hover:bg-surface-secondary">
+              <button type="button" onClick={() => navigate(1)} aria-label="Next" className="p-1.5 rounded-md border border-border text-text-muted hover:bg-surface-secondary">
                 <ChevronRight size={14} />
               </button>
             </div>
@@ -327,7 +332,13 @@ export default function CalendarPage() {
                           </span>
                         ))}
                         {dayEvents.length > 2 && (
-                          <span className="text-[10px] text-text-muted px-1">+{dayEvents.length - 2} more</span>
+                          <button
+                            type="button"
+                            onClick={() => { setView("day"); setAnchorDate(day); }}
+                            className="text-[10px] text-accent hover:text-accent-dark font-medium px-1 text-left w-full"
+                          >
+                            +{dayEvents.length - 2} more
+                          </button>
                         )}
                       </div>
                     </div>

@@ -14,9 +14,12 @@ export async function setAvailability(req: Request, res: Response) {
 export async function myBookings(req: Request, res: Response) {
   const { roleName } = req.user!;
   const isMentor = roleName === "Mentor" || roleName === "Admin" || roleName === "Cohort Manager";
+  const status = req.query.status ? String(req.query.status) : undefined;
+  const page = Math.max(1, Number(req.query.page ?? 1));
+  const limit = 10;
   const data = isMentor
-    ? await bookingService.listBookingsForMentor(req.user!.id)
-    : await bookingService.listBookingsForStudent(req.user!.id);
+    ? await bookingService.listBookingsForMentor(req.user!.id, { status, page, limit })
+    : await bookingService.listBookingsForStudent(req.user!.id, { status, page, limit });
   return success(res, data);
 }
 

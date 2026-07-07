@@ -38,20 +38,38 @@ export async function setAvailability(mentorId: string, slots: { dayOfWeek: numb
 
 // ── Booking ────────────────────────────────────────────────────────────────────
 
-export async function listBookingsForMentor(mentorId: string) {
-  return prisma.mentorBooking.findMany({
-    where: { mentorId },
-    include: { student: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } }, cohort: { select: { id: true, name: true } }, rating: true },
-    orderBy: { scheduledAt: "desc" },
-  });
+type BookingListOptions = { status?: string; page?: number; limit?: number };
+
+export async function listBookingsForMentor(mentorId: string, opts: BookingListOptions = {}) {
+  const { status, page = 1, limit = 10 } = opts;
+  const where = { mentorId, ...(status ? { status: status as "PENDING" | "CONFIRMED" | "CANCELLED" | "COMPLETED" } : {}) };
+  const [items, total] = await Promise.all([
+    prisma.mentorBooking.findMany({
+      where,
+      include: { student: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } }, cohort: { select: { id: true, name: true } }, rating: true },
+      orderBy: { scheduledAt: "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.mentorBooking.count({ where }),
+  ]);
+  return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
 }
 
-export async function listBookingsForStudent(studentId: string) {
-  return prisma.mentorBooking.findMany({
-    where: { studentId },
-    include: { mentor: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } }, cohort: { select: { id: true, name: true } }, rating: true },
-    orderBy: { scheduledAt: "desc" },
-  });
+export async function listBookingsForStudent(studentId: string, opts: BookingListOptions = {}) {
+  const { status, page = 1, limit = 10 } = opts;
+  const where = { studentId, ...(status ? { status: status as "PENDING" | "CONFIRMED" | "CANCELLED" | "COMPLETED" } : {}) };
+  const [items, total] = await Promise.all([
+    prisma.mentorBooking.findMany({
+      where,
+      include: { mentor: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } }, cohort: { select: { id: true, name: true } }, rating: true },
+      orderBy: { scheduledAt: "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.mentorBooking.count({ where }),
+  ]);
+  return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
 }
 
 export async function createBooking(studentId: string, data: {

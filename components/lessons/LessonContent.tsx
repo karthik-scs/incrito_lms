@@ -77,15 +77,25 @@ function LiveSession({ lessonId, liveClass, title }: { lessonId: string; liveCla
       {!cancelled && <p className="text-sm text-text-muted">Starts in {formatCountdown(remainingMs)}</p>}
 
       {!cancelled && liveClass.joinUrl && (
-        <a
-          href={liveClass.joinUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-accent-foreground hover:bg-accent-dark font-medium text-sm transition-colors"
-        >
-          <Radio size={14} />
-          Join Meeting
-        </a>
+        liveClass.isLiveNow ? (
+          <a
+            href={liveClass.joinUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-accent-foreground hover:bg-accent-dark font-medium text-sm transition-colors"
+          >
+            <Radio size={14} />
+            Join Meeting
+          </a>
+        ) : (
+          <span
+            title="Meeting link opens 10 minutes before the class starts"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-surface border border-border text-text-muted text-sm cursor-not-allowed select-none"
+          >
+            <Radio size={14} />
+            Join Meeting
+          </span>
+        )
       )}
     </div>
   );

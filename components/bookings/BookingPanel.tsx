@@ -385,6 +385,9 @@ function ConfirmModal({ booking, onClose, onDone }: { booking: Booking; onClose:
 
 // ── Booking list ────────────────────────────────────────────────────────────────
 
+const STATUS_FILTERS = ["All", "PENDING", "CONFIRMED", "COMPLETED", "CANCELLED"] as const;
+type StatusFilter = typeof STATUS_FILTERS[number];
+
 export function BookingList({ showBookButton = false, mentorId, mentorName }: {
   showBookButton?: boolean;
   mentorId?: string;
@@ -393,19 +396,38 @@ export function BookingList({ showBookButton = false, mentorId, mentorName }: {
   const { user } = useAuth();
   const isMentor = user?.role === "Mentor" || user?.role === "Admin" || user?.role === "Cohort Manager";
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [totalPages, setTotalPages] = useState(1);
+  const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("All");
   const [loading, setLoading] = useState(true);
   const [showBook, setShowBook] = useState(false);
   const [confirming, setConfirming] = useState<Booking | null>(null);
   const [rating, setRating] = useState<Booking | null>(null);
 
-  async function load() {
+  async function load(p = page, sf = statusFilter) {
     setLoading(true);
-    const result = await apiJson<Booking[]>("/api/bookings");
-    if (result.ok) setBookings(result.data);
+    const params = new URLSearchParams({ page: String(p) });
+    if (sf !== "All") params.set("status", sf);
+    const result = await apiJson<{ items: Booking[]; total: number; page: number; totalPages: number }>(`/api/bookings?${params}`);
+    if (result.ok) {
+      setBookings(result.data.items);
+      setTotalPages(result.data.totalPages);
+    }
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(1, statusFilter); }, []);
+
+  function changeFilter(sf: StatusFilter) {
+    setStatusFilter(sf);
+    setPage(1);
+    load(1, sf);
+  }
+
+  function changePage(p: number) {
+    setPage(p);
+    load(p, statusFilter);
+  }
 
   async function cancel(id: string) {
     if (!window.confirm("Cancel this booking?")) return;
@@ -429,6 +451,24 @@ export function BookingList({ showBookButton = false, mentorId, mentorName }: {
             <Calendar size={13} /> Book session
           </Button>
         )}
+      </div>
+
+      {/* Status filter tabs */}
+      <div className="flex gap-1 flex-wrap mb-4">
+        {STATUS_FILTERS.map((sf) => (
+          <button
+            key={sf}
+            type="button"
+            onClick={() => changeFilter(sf)}
+            className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+              statusFilter === sf
+                ? "bg-accent text-white border-accent"
+                : "bg-surface-secondary text-text-muted border-border hover:border-accent hover:text-accent"
+            }`}
+          >
+            {sf === "All" ? "All" : sf.charAt(0) + sf.slice(1).toLowerCase()}
+          </button>
+        ))}
       </div>
 
       {loading && <p className="text-xs text-text-muted">Loading…</p>}
@@ -502,6 +542,29 @@ export function BookingList({ showBookButton = false, mentorId, mentorName }: {
           );
         })}
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 mt-4">
+          <button
+            type="button"
+            disabled={page <= 1}
+            onClick={() => changePage(page - 1)}
+            className="px-3 py-1 text-xs rounded-md border border-border text-text-muted hover:text-text-primary disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            ← Prev
+          </button>
+          <span className="text-xs text-text-muted">Page {page} of {totalPages}</span>
+          <button
+            type="button"
+            disabled={page >= totalPages}
+            onClick={() => changePage(page + 1)}
+            className="px-3 py-1 text-xs rounded-md border border-border text-text-muted hover:text-text-primary disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Next →
+          </button>
+        </div>
+      )}
 
       {showBook && mentorId && mentorName && (
         <BookModal mentorId={mentorId} mentorName={mentorName} onClose={() => setShowBook(false)} onBooked={load} />

@@ -264,7 +264,7 @@ export async function notifyLiveClassTransition(
     where: { id: lesson.moduleId },
     include: { cohort: { select: { id: true, course: { select: { slug: true } } } } },
   });
-  if (!module) return;
+  if (!module || !module.cohort) return;
 
   const cohortId = module.cohortId;
   const courseSlug = module.cohort.course.slug;
@@ -276,7 +276,7 @@ export async function notifyLiveClassTransition(
       "Live class starting now",
       `"${liveClass.title}" is live now — join from your course roadmap.`,
       { lessonId, liveClassId: liveClass.id, courseSlug, action: "join" }
-    ).catch(() => null);
+    ).catch((err) => console.error("[notifyLiveClass] cohort notify failed:", err));
   }
 
   if (before.status !== "COMPLETED" && liveClass.status === "COMPLETED" && liveClass.recordingUrl) {
@@ -286,7 +286,7 @@ export async function notifyLiveClassTransition(
       "Recording available",
       `The recording for "${liveClass.title}" is now available to watch.`,
       { lessonId, liveClassId: liveClass.id, courseSlug, action: "watch" }
-    ).catch(() => null);
+    ).catch((err) => console.error("[notifyLiveClass] recording notify failed:", err));
   }
 
   // Emit a real-time event so the roadmap / learn page refreshes without a manual reload.

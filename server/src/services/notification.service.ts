@@ -30,7 +30,7 @@ async function isNotificationAllowed(userId: string, type: NotificationType): Pr
 
 export function listMine(userId: string, limit = 20) {
   return prisma.notification.findMany({
-    where: { userId },
+    where: { userId, isRead: false },
     orderBy: { createdAt: "desc" },
     take: limit,
   });

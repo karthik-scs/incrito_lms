@@ -18,6 +18,7 @@ type SessionEvent = {
   endTime: string;
   status: string;
   joinUrl: string | null;
+  hostStartUrl: string | null;
   isLiveNow: boolean;
   cohort: { id: string; name: string } | null;
   course: { id: string; title: string; slug: string } | null;
@@ -149,7 +150,17 @@ export default function SessionsPage() {
                       {event.course && <span>{event.course.title}</span>}
                     </div>
                   </div>
-                  {event.isLiveNow && event.joinUrl && (
+                  {event.isLiveNow && user?.role === "Mentor" && event.hostStartUrl ? (
+                    <a
+                      href={event.hostStartUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 bg-accent text-accent-foreground rounded-md px-3 py-1.5 text-xs font-medium animate-pulse shrink-0"
+                    >
+                      <Radio size={12} />
+                      Host
+                    </a>
+                  ) : event.isLiveNow && event.joinUrl ? (
                     <a
                       href={event.joinUrl}
                       target="_blank"
@@ -159,10 +170,10 @@ export default function SessionsPage() {
                       <Radio size={12} />
                       Join
                     </a>
-                  )}
-                  {event.course && user?.role === "Mentor" && (
+                  ) : null}
+                  {event.cohort && (user?.role === "Mentor" || user?.role === "Cohort Manager") && (
                     <Link
-                      href={`/admin/courses/${event.course.slug}`}
+                      href={`/admin/cohorts/${event.cohort.id}`}
                       className="text-xs text-accent hover:text-accent-dark font-medium shrink-0"
                     >
                       Manage

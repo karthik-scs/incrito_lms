@@ -58,6 +58,7 @@ export async function getMyCalendarEvents(
           endTime: liveClass.endTime,
           status: effectiveStatus,
           joinUrl: liveClass.joinUrl,
+          hostStartUrl: liveClass.hostStartUrl,
           isLiveNow: isLiveNow(liveClass),
           cohort: cohort ? { id: cohort.id, name: cohort.name } : null,
           course: cohort ? cohort.course : null,

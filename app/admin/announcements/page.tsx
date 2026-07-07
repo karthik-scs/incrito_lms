@@ -12,11 +12,15 @@ import { useAuth } from "@/components/providers/AuthProvider";
 
 type Audience = "ALL" | "STUDENTS" | "MENTORS" | "COHORT_MANAGERS";
 
+type MyCohort = { id: string; name: string };
+
 type Announcement = {
   id: string;
   title: string;
   content: string;
   audience: Audience;
+  cohortId: string | null;
+  cohort: { id: string; name: string } | null;
   createdAt: string;
   recipientCount: number;
   createdBy: { id: string; firstName: string; lastName: string };
@@ -50,31 +54,47 @@ function timeAgo(iso: string) {
 export default function AnnouncementsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "Admin";
+  const isScopedRole = user?.role === "Mentor" || user?.role === "Cohort Manager";
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [myCohorts, setMyCohorts] = useState<MyCohort[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [audience, setAudience] = useState<Audience>("ALL");
+  const [selectedCohortId, setSelectedCohortId] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   async function load() {
     setLoading(true);
-    const result = await apiJson<Announcement[]>("/api/announcements");
-    if (result.ok) setAnnouncements(result.data);
+    const [announcementsRes, cohortsRes] = await Promise.all([
+      apiJson<Announcement[]>("/api/announcements"),
+      isScopedRole ? apiJson<{ id: string; name: string; mentors: { user: { id: string } }[]; managers: { user: { id: string } }[] }[]>("/api/cohorts") : Promise.resolve({ ok: false as const, message: "" }),
+    ]);
+    if (announcementsRes.ok) setAnnouncements(announcementsRes.data);
+    if (cohortsRes.ok && user) {
+      const mine = cohortsRes.data.filter((c) =>
+        user.role === "Mentor"
+          ? c.mentors.some((m) => m.user.id === user.id)
+          : c.managers.some((m) => m.user.id === user.id)
+      );
+      setMyCohorts(mine.map((c) => ({ id: c.id, name: c.name })));
+    }
     setLoading(false);
   }
 
   useEffect(() => {
     load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function openCreate() {
     setTitle("");
     setContent("");
     setAudience("ALL");
+    setSelectedCohortId("");
     setFormError(null);
     setModalOpen(true);
   }
@@ -85,7 +105,7 @@ export default function AnnouncementsPage() {
     setSubmitting(true);
     const result = await apiJson("/api/announcements", {
       method: "POST",
-      body: JSON.stringify({ title, content, audience }),
+      body: JSON.stringify({ title, content, audience, cohortId: selectedCohortId || undefined }),
     });
     setSubmitting(false);
     if (!result.ok) {
@@ -134,7 +154,11 @@ export default function AnnouncementsPage() {
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h2 className="text-base font-semibold text-text-primary">{a.title}</h2>
-                  <Badge variant="accent">{AUDIENCE_LABEL[a.audience]}</Badge>
+                  {a.cohort ? (
+                    <Badge variant="info">{a.cohort.name}</Badge>
+                  ) : (
+                    <Badge variant="accent">{AUDIENCE_LABEL[a.audience]}</Badge>
+                  )}
                 </div>
                 <p className="text-sm text-text-secondary mt-1.5 whitespace-pre-wrap">{a.content}</p>
                 <div className="flex items-center gap-3 mt-3 text-xs text-text-muted">
@@ -182,10 +206,23 @@ export default function AnnouncementsPage() {
               </div>
             </div>
           )}
-          {!isAdmin && (
-            <p className="text-xs text-text-muted bg-surface-secondary rounded-md px-3 py-2">
-              This announcement will be sent to students in your assigned cohorts.
-            </p>
+          {isScopedRole && (
+            <div>
+              <label className="text-sm font-medium text-text-secondary">Cohort</label>
+              <div className="mt-1">
+                <Select
+                  value={selectedCohortId}
+                  onChange={setSelectedCohortId}
+                  options={[
+                    { value: "", label: "All my cohorts" },
+                    ...myCohorts.map((c) => ({ value: c.id, label: c.name })),
+                  ]}
+                />
+              </div>
+              <p className="text-xs text-text-muted mt-1">
+                {selectedCohortId ? "Announcement will be sent only to students in the selected cohort." : "Announcement will be sent to students in all your assigned cohorts."}
+              </p>
+            </div>
           )}
           {formError && <p className="text-sm text-error">{formError}</p>}
           <div className="flex justify-end gap-2 mt-2">

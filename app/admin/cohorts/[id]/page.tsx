@@ -105,10 +105,11 @@ export default function CohortDetailPage() {
   async function load() {
     setLoading(true);
     setError(null);
-    const [cohortRes, enrollmentsRes, usersRes, progressRes] = await Promise.all([
+    const [cohortRes, enrollmentsRes, mentorCandidatesRes, studentCandidatesRes, progressRes] = await Promise.all([
       apiJson<Cohort>(`/api/cohorts/${cohortId}`),
       apiJson<Enrollment[]>(`/api/enrollments?cohortId=${cohortId}`),
-      apiJson<UserOption[]>("/api/users"),
+      apiJson<UserOption[]>(`/api/cohorts/${cohortId}/candidate-users?type=mentor`),
+      apiJson<UserOption[]>(`/api/cohorts/${cohortId}/candidate-users?type=student`),
       apiJson<ProgressRow[]>(`/api/cohorts/${cohortId}/progress`),
     ]);
 
@@ -116,8 +117,26 @@ export default function CohortDetailPage() {
     else setError(cohortRes.message);
 
     if (enrollmentsRes.ok) setEnrollments(enrollmentsRes.data);
-    if (usersRes.ok) setUsers(usersRes.data);
     if (progressRes.ok) setProgressRows(progressRes.data);
+
+    // Build a combined user list from candidate responses + already-assigned members from cohort
+    const combined: UserOption[] = [];
+    if (mentorCandidatesRes.ok) combined.push(...mentorCandidatesRes.data);
+    if (studentCandidatesRes.ok) combined.push(...studentCandidatesRes.data);
+    // Also include already-assigned mentors/managers from the cohort response so remove buttons work
+    if (cohortRes.ok) {
+      for (const m of cohortRes.data.mentors) {
+        if (!combined.find((u) => u.id === m.user.id)) {
+          combined.push({ ...m.user, role: { name: "Mentor" } });
+        }
+      }
+      for (const m of cohortRes.data.managers) {
+        if (!combined.find((u) => u.id === m.user.id)) {
+          combined.push({ ...m.user, role: { name: "Cohort Manager" } });
+        }
+      }
+    }
+    setUsers(combined);
 
     setLoading(false);
   }
@@ -211,10 +230,10 @@ export default function CohortDetailPage() {
     setCohort((prev) => (prev ? { ...prev, _count: { enrollments: Math.max(0, prev._count.enrollments - 1) } } : prev));
   }
 
+  // candidate-users endpoint already excludes assigned users; just format for Select
   const mentorOptions = useMemo(() => {
-    const assignedIds = new Set(cohort?.mentors.map((m) => m.user.id));
-    return users.filter((u) => u.role.name === "Mentor" && !assignedIds.has(u.id)).map((u) => ({ value: u.id, label: `${u.firstName} ${u.lastName}` }));
-  }, [users, cohort]);
+    return users.filter((u) => u.role.name === "Mentor").map((u) => ({ value: u.id, label: `${u.firstName} ${u.lastName}` }));
+  }, [users]);
 
   const managerOptions = useMemo(() => {
     const assignedIds = new Set(cohort?.managers.map((m) => m.user.id));
@@ -222,9 +241,8 @@ export default function CohortDetailPage() {
   }, [users, cohort]);
 
   const studentOptions = useMemo(() => {
-    const enrolledIds = new Set(enrollments.map((e) => e.user.id));
-    return users.filter((u) => u.role.name === "Student" && !enrolledIds.has(u.id)).map((u) => ({ value: u.id, label: `${u.firstName} ${u.lastName}` }));
-  }, [users, enrollments]);
+    return users.filter((u) => u.role.name === "Student").map((u) => ({ value: u.id, label: `${u.firstName} ${u.lastName}` }));
+  }, [users]);
 
   const TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
     { key: "curriculum", label: "Curriculum", icon: BookOpen },

@@ -49,19 +49,24 @@ export async function listAnnouncements(requesterId: string, requesterRole: stri
   const announcements = await prisma.announcement.findMany({
     where,
     orderBy: { createdAt: "desc" },
-    include: { createdBy: { select: { id: true, firstName: true, lastName: true } } },
+    include: {
+      createdBy: { select: { id: true, firstName: true, lastName: true } },
+      cohort: { select: { id: true, name: true } },
+    },
   });
 
   return Promise.all(
     announcements.map(async (a) => ({
       ...a,
-      recipientCount: (await getTargetUserIds(a.audience)).length,
+      recipientCount: a.cohortId
+        ? (await prisma.enrollment.count({ where: { cohortId: a.cohortId } }))
+        : (await getTargetUserIds(a.audience)).length,
     }))
   );
 }
 
 export async function createAnnouncement(
-  data: { title: string; content: string; audience?: "ALL" | "STUDENTS" | "MENTORS" | "COHORT_MANAGERS" },
+  data: { title: string; content: string; audience?: "ALL" | "STUDENTS" | "MENTORS" | "COHORT_MANAGERS"; cohortId?: string },
   createdById: string,
   creatorRole: string
 ) {
@@ -71,13 +76,19 @@ export async function createAnnouncement(
   const audience = isScopedRole ? "ALL" : (data.audience ?? "ALL");
 
   const announcement = await prisma.announcement.create({
-    data: { title: data.title, content: data.content, audience, createdById },
+    data: { title: data.title, content: data.content, audience, createdById, cohortId: data.cohortId ?? null },
     include: { createdBy: { select: { id: true, firstName: true, lastName: true } } },
   });
 
   let targetUserIds: string[];
   if (isScopedRole) {
-    targetUserIds = (await getCohortMemberIds(createdById, creatorRole)).filter((id) => id !== createdById);
+    if (data.cohortId) {
+      // Send only to that specific cohort's enrolled students
+      const enrollments = await prisma.enrollment.findMany({ where: { cohortId: data.cohortId }, select: { userId: true } });
+      targetUserIds = enrollments.map((e) => e.userId).filter((id) => id !== createdById);
+    } else {
+      targetUserIds = (await getCohortMemberIds(createdById, creatorRole)).filter((id) => id !== createdById);
+    }
   } else {
     targetUserIds = (await getTargetUserIds(audience)).filter((id) => id !== createdById);
   }

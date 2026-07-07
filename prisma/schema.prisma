@@ -407,6 +407,7 @@ model Cohort {
   certificates       Certificate[]
   posts              Post[]
   mentorBookings     MentorBooking[]
+  announcements      Announcement[]
 
   @@index([courseId])
 }
@@ -984,11 +985,14 @@ model Announcement {
   content     String
   audience    AnnouncementAudience @default(ALL)
   createdById String
+  cohortId    String?
   createdAt   DateTime             @default(now())
 
-  createdBy User @relation("AnnouncementCreatedBy", fields: [createdById], references: [id])
+  createdBy User    @relation("AnnouncementCreatedBy", fields: [createdById], references: [id])
+  cohort    Cohort? @relation(fields: [cohortId], references: [id], onDelete: SetNull)
 
   @@index([createdById])
+  @@index([cohortId])
 }
 
 // ---------------------------------------------------------------------------

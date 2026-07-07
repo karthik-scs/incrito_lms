@@ -60,5 +60,6 @@ router.get("/:id/progress", authenticate, authorize("cohort:read"), asyncHandler
 // No `cohort:read` gate — students (who lack that permission) need this for @mention autocomplete
 // in their cohort's discussion; access itself is enforced inside the service (member or Admin only).
 router.get("/:id/members", authenticate, asyncHandler(cohortController.members));
+router.get("/:id/candidate-users", authenticate, authorize("cohort:read"), asyncHandler(cohortController.listCandidateUsers));
 
 export default router;

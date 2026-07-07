@@ -59,3 +59,12 @@ export async function stats(_req: Request, res: Response) {
   const result = await cohortService.getCohortStats();
   return success(res, result);
 }
+
+export async function listCandidateUsers(req: Request, res: Response) {
+  const type = req.query.type as "mentor" | "student";
+  if (type !== "mentor" && type !== "student") {
+    throw new AppError("type must be 'mentor' or 'student'", 400);
+  }
+  const users = await cohortService.getCandidateUsers(String(req.params.id), type);
+  return success(res, users);
+}

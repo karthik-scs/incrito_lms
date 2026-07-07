@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useRef, type FormEvent } from "react";
+import { useEffect, useState, useRef, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { Eye, EyeOff, Lock, Mail, ShieldCheck, Smartphone } from "lucide-react";
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { InlineAlert } from "@/components/ui/InlineAlert";
 import { markFlowEntry } from "@/lib/authFlowGuard";
 import { setAccessToken } from "@/lib/authClient";
+import { useAuth } from "@/components/providers/AuthProvider";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -138,6 +140,15 @@ function MfaStep({ mfaToken, onBack }: { mfaToken: string; onBack: () => void })
 // ── Password step ──────────────────────────────────────────────────────────────
 
 export default function LoginPage() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace(user.role === "Admin" ? "/admin/dashboard" : "/dashboard");
+    }
+  }, [loading, user, router]);
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);

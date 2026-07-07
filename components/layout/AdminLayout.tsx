@@ -22,7 +22,9 @@ function canAccessPath(role: SidebarRole, pathname: string): boolean {
     return (
       pathname === "/admin/announcements" ||
       // Course detail only (/admin/courses/[slug]) — list is at /mentor/courses
-      (pathname.startsWith("/admin/courses/") && pathname !== "/admin/courses")
+      (pathname.startsWith("/admin/courses/") && pathname !== "/admin/courses") ||
+      // Cohort detail only (/admin/cohorts/[id]) — list is at /cohorts
+      (pathname.startsWith("/admin/cohorts/") && pathname.split("/").filter(Boolean).length > 2)
     );
   }
   if (role === "Cohort Manager") {

@@ -34,6 +34,7 @@ export function ProfileSettingsTab() {
     if (user) {
       setFirstName(user.firstName);
       setLastName(user.lastName);
+      setMobileNumber(user.mobileNumber ?? "");
     }
   }, [user]);
 

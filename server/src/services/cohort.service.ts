@@ -229,3 +229,24 @@ export async function getCohortStats() {
     atRiskStudents,
   };
 }
+
+/** Returns users eligible to be added to the cohort (not already assigned). Requires cohort:read. */
+export async function getCandidateUsers(cohortId: string, type: "mentor" | "student") {
+  const roleName = type === "mentor" ? "Mentor" : "Student";
+
+  const alreadyIn =
+    type === "mentor"
+      ? await prisma.cohortMentor.findMany({ where: { cohortId }, select: { userId: true } })
+      : await prisma.enrollment.findMany({ where: { cohortId }, select: { userId: true } });
+
+  const excludeIds = alreadyIn.map((r) => r.userId);
+
+  return prisma.user.findMany({
+    where: {
+      role: { name: roleName },
+      id: { notIn: excludeIds },
+    },
+    select: { id: true, firstName: true, lastName: true, email: true, role: { select: { name: true } } },
+    orderBy: { firstName: "asc" },
+  });
+}

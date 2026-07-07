@@ -36,3 +36,8 @@ export async function watermarkedPdf(req: Request, res: Response) {
   res.setHeader("Cache-Control", "private, no-store");
   res.end(pdfBuffer);
 }
+
+export async function downloadRedirect(req: Request, res: Response) {
+  const url = await resourceService.getResourceSignedUrl(String(req.params.id), req.user!.id);
+  res.redirect(302, url);
+}

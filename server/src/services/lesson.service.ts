@@ -558,3 +558,43 @@ export async function streamLessonContent(
   const { proxyS3Stream } = await import("../lib/s3");
   await proxyS3Stream(key, rangeHeader, res);
 }
+
+const VIDEO_CONTENT_STAFF_ROLES = ["Admin", "Mentor", "Cohort Manager"];
+
+export async function presignVideoContentUpload(lessonId: string, userId: string, contentType: string) {
+  const lesson = await prisma.lesson.findUnique({
+    where: { id: lessonId },
+    include: { module: { include: { cohort: { select: { name: true } } } } },
+  });
+  if (!lesson) throw new AppError("Lesson not found", 404);
+  if (lesson.type !== "VIDEO") throw new AppError("Only VIDEO lessons support direct upload", 400);
+
+  const user = await prisma.user.findUnique({ where: { id: userId }, include: { role: true } });
+  if (!user || !VIDEO_CONTENT_STAFF_ROLES.includes(user.role.name)) {
+    throw new AppError("Only staff can upload video content", 403);
+  }
+
+  const slug = (s: string) =>
+    s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 50);
+
+  const cohortName = lesson.module?.cohort?.name ? slug(lesson.module.cohort.name) : "content";
+  const ext = contentType === "video/webm" ? ".webm" : ".mp4";
+  const key = `videos/${cohortName}/${slug(lesson.title)}_${Date.now()}${ext}`;
+  const uploadUrl = await getPresignedPutUrl(key, contentType);
+  return { key, uploadUrl };
+}
+
+export async function finalizeVideoContentUpload(lessonId: string, userId: string, key: string) {
+  const lesson = await prisma.lesson.findUnique({ where: { id: lessonId } });
+  if (!lesson) throw new AppError("Lesson not found", 404);
+  if (lesson.type !== "VIDEO") throw new AppError("Only VIDEO lessons support direct upload", 400);
+
+  const user = await prisma.user.findUnique({ where: { id: userId }, include: { role: true } });
+  if (!user || !VIDEO_CONTENT_STAFF_ROLES.includes(user.role.name)) {
+    throw new AppError("Only staff can upload video content", 403);
+  }
+
+  const { env } = await import("../config/env");
+  const contentUrl = `${env.PUBLIC_API_URL}/api/files/${key}`;
+  return prisma.lesson.update({ where: { id: lessonId }, data: { contentUrl } });
+}

@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Download } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { apiJson } from "@/lib/authClient";
+import { apiJson, getAccessToken } from "@/lib/authClient";
 
 type Resource = { id: string; title: string; fileUrl: string; fileType: string };
 
@@ -87,9 +88,25 @@ function ProtectedResourceVideo({ resourceId }: { resourceId: string }) {
   );
 }
 
-/** Image viewer with CSS identity watermark overlay. */
-function WatermarkedImage({ src, title }: { src: string; title: string }) {
+/** Image viewer — fetches signed URL so the raw S3 key is never exposed. */
+function WatermarkedImage({ resourceId, title }: { resourceId: string; title: string }) {
   const watermarkText = useWatermarkText();
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiJson<{ url: string }>(`/api/resources/${resourceId}/signed-url`).then((r) => {
+      if (r.ok) setSrc(r.data.url);
+    });
+  }, [resourceId]);
+
+  if (!src) {
+    return (
+      <div className="aspect-video bg-surface-secondary flex items-center justify-center rounded-lg">
+        <p className="text-sm text-text-muted">Loading…</p>
+      </div>
+    );
+  }
+
   return (
     <div className="relative w-full bg-surface-secondary rounded-lg overflow-hidden" onContextMenu={(e) => e.preventDefault()}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -103,6 +120,36 @@ function WatermarkedImage({ src, title }: { src: string; title: string }) {
         </span>
       </div>
     </div>
+  );
+}
+
+/** DOCX/EXCEL viewer — fetches signed URL first so we pass a clean S3 URL (not our DB URL) to Google Viewer. */
+function SecureDocViewer({ resourceId, title }: { resourceId: string; title: string }) {
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiJson<{ url: string }>(`/api/resources/${resourceId}/signed-url`).then((r) => {
+      if (r.ok) {
+        setViewerUrl(`https://docs.google.com/viewer?url=${encodeURIComponent(r.data.url)}&embedded=true`);
+      }
+    });
+  }, [resourceId]);
+
+  if (!viewerUrl) {
+    return (
+      <div className="aspect-video bg-surface-secondary flex items-center justify-center rounded-lg">
+        <p className="text-sm text-text-muted">Loading…</p>
+      </div>
+    );
+  }
+
+  return (
+    <iframe
+      src={viewerUrl}
+      title={title}
+      className="w-full border-0 rounded-lg"
+      style={{ height: "70vh" }}
+    />
   );
 }
 
@@ -154,29 +201,35 @@ export function ResourceViewer({
   return (
     <Modal open={open} onClose={onClose} title={resource.title} maxWidth="max-w-3xl">
       {resource.fileType === "IMAGE" && (
-        <WatermarkedImage src={resource.fileUrl} title={resource.title} />
+        <WatermarkedImage resourceId={resource.id} title={resource.title} />
       )}
 
       {resource.fileType === "VIDEO" && (
         <ProtectedResourceVideo resourceId={resource.id} />
       )}
 
-      {(resource.fileType === "PDF" || resource.fileType === "DOCX" || resource.fileType === "EXCEL") && (
-        resource.fileType === "PDF"
-          ? <WatermarkedPdf resourceId={resource.id} title={resource.title} />
-          : (
-            <iframe
-              src={`https://docs.google.com/viewer?url=${encodeURIComponent(resource.fileUrl)}&embedded=true`}
-              title={resource.title}
-              className="w-full border-0 rounded-lg"
-              style={{ height: "70vh" }}
-            />
-          )
+      {resource.fileType === "PDF" && (
+        <WatermarkedPdf resourceId={resource.id} title={resource.title} />
       )}
 
-      <p className="text-xs text-text-muted mt-2">
-        Content is protected — watermarked with your identity.
-      </p>
+      {(resource.fileType === "DOCX" || resource.fileType === "EXCEL") && (
+        <SecureDocViewer resourceId={resource.id} title={resource.title} />
+      )}
+
+      <div className="flex items-center justify-between mt-2">
+        <p className="text-xs text-text-muted">Content is protected — watermarked with your identity.</p>
+        {(resource.fileType === "DOCX" || resource.fileType === "EXCEL") && (
+          <a
+            href={`/api/resources/${resource.id}/download?token=${encodeURIComponent(getAccessToken() ?? "")}`}
+            className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent-dark font-medium"
+            target="_blank"
+            rel="noreferrer"
+          >
+            <Download size={12} />
+            Download
+          </a>
+        )}
+      </div>
     </Modal>
   );
 }

@@ -27,8 +27,11 @@ type GroupCallSlot = {
   meetingUrl: string | null;
   status: "OPEN" | "FULL" | "CANCELLED" | "COMPLETED";
   mentor: { id: string; firstName: string; lastName: string; avatarUrl: string | null };
+  cohort: { id: string; name: string } | null;
   requests: GroupCallRequest[];
 };
+
+type CohortOption = { id: string; name: string; status: string };
 
 const STATUS_VARIANT: Record<string, "success" | "info" | "muted" | "neutral"> = {
   OPEN: "success",
@@ -49,8 +52,16 @@ function CreateSlotModal({ onClose, onCreated }: { onClose: () => void; onCreate
   const [maxMembers, setMaxMembers] = useState(5);
   const [topic, setTopic] = useState("");
   const [meetingUrl, setMeetingUrl] = useState("");
+  const [cohortId, setCohortId] = useState("");
+  const [cohorts, setCohorts] = useState<CohortOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    apiJson<CohortOption[]>("/api/group-calls/my-cohorts").then((r) => {
+      if (r.ok) setCohorts(r.data);
+    });
+  }, []);
 
   async function submit() {
     if (!scheduledAt) { setError("Pick a date and time"); return; }
@@ -64,6 +75,7 @@ function CreateSlotModal({ onClose, onCreated }: { onClose: () => void; onCreate
         maxMembers,
         topic: topic || undefined,
         meetingUrl: meetingUrl || undefined,
+        cohortId: cohortId || undefined,
       }),
     });
     setBusy(false);
@@ -111,6 +123,20 @@ function CreateSlotModal({ onClose, onCreated }: { onClose: () => void; onCreate
               className="mt-1 w-full text-sm bg-surface-secondary border border-border rounded-md px-3 py-2 text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
             />
           </div>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-text-secondary">Cohort (optional)</label>
+          <select
+            value={cohortId}
+            onChange={(e) => setCohortId(e.target.value)}
+            className="mt-1 w-full text-sm bg-surface-secondary border border-border rounded-md px-3 py-2 text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+          >
+            <option value="">All my cohorts</option>
+            {cohorts.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          <p className="text-xs text-text-muted mt-0.5">Limit this session to students in a specific cohort.</p>
         </div>
         <div>
           <label className="text-xs font-medium text-text-secondary">Topic (optional)</label>
@@ -178,12 +204,14 @@ function MentorSlotCard({ slot, onRefresh }: { slot: GroupCallSlot; onRefresh: (
             <span className="flex items-center gap-1">
               <Users size={11} />{confirmed.length} / {slot.maxMembers} confirmed
             </span>
+            {slot.cohort && <Badge variant="neutral" size="sm">{slot.cohort.name}</Badge>}
           </div>
           {slot.meetingUrl && (
             <a href={slot.meetingUrl} target="_blank" rel="noreferrer" className="mt-1.5 inline-flex items-center gap-1 text-xs text-accent font-medium hover:underline">
               Meeting link →
             </a>
           )}
+
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {slot.status === "OPEN" || slot.status === "FULL" ? (
@@ -213,7 +241,7 @@ function MentorSlotCard({ slot, onRefresh }: { slot: GroupCallSlot; onRefresh: (
               {pending.map((r) => (
                 <div key={r.id} className="flex items-center justify-between bg-surface-secondary rounded-lg px-3 py-2">
                   <p className="text-sm text-text-primary">{r.student.firstName} {r.student.lastName}</p>
-                  {(slot.status === "OPEN") && (
+                  {(slot.status === "OPEN" || slot.status === "FULL") && (
                     <div className="flex items-center gap-1">
                       <button onClick={() => confirm(r.id)} className="text-xs font-medium text-success hover:text-success/80 px-2 py-1 rounded-md hover:bg-surface">
                         <Check size={13} />
@@ -275,6 +303,7 @@ function StudentSlotCard({ slot, onRefresh }: { slot: GroupCallSlot; onRefresh: 
             <span className="flex items-center gap-1"><Calendar size={11} />{formatDT(slot.scheduledAt)}</span>
             <span className="flex items-center gap-1"><Clock size={11} />{slot.durationMinutes} min</span>
             <span className="flex items-center gap-1"><Users size={11} />{confirmed} / {slot.maxMembers} spots taken</span>
+            {slot.cohort && <Badge variant="neutral" size="sm">{slot.cohort.name}</Badge>}
           </div>
           {myRequest?.status === "CONFIRMED" && slot.meetingUrl && (
             <a href={slot.meetingUrl} target="_blank" rel="noreferrer" className="mt-1.5 inline-flex items-center gap-1 text-xs text-accent font-medium hover:underline">
@@ -289,7 +318,7 @@ function StudentSlotCard({ slot, onRefresh }: { slot: GroupCallSlot; onRefresh: 
               disabled={slot.status === "FULL"}
               className="px-3 py-1.5 text-xs"
             >
-              {slot.status === "FULL" ? "Full" : "Request to join"}
+              {slot.status === "FULL" ? "Full" : "Join session"}
             </Button>
           ) : myRequest.status === "PENDING" ? (
             <div className="flex items-center gap-2">

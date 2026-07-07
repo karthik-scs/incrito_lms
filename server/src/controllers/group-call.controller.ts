@@ -44,3 +44,7 @@ export async function requestJoin(req: Request, res: Response) {
 export async function cancelMyRequest(req: Request, res: Response) {
   return success(res, await groupCallService.cancelStudentRequest(String(req.params.id), req.user!.id));
 }
+
+export async function myCohorts(req: Request, res: Response) {
+  return success(res, await groupCallService.getMentorCohorts(req.user!.id));
+}

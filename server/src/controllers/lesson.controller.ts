@@ -45,6 +45,16 @@ export async function finalizeRecording(req: Request, res: Response) {
   return success(res, liveClass);
 }
 
+export async function presignVideoContent(req: Request, res: Response) {
+  const result = await lessonService.presignVideoContentUpload(String(req.params.id), req.user!.id, req.body.contentType);
+  return success(res, result);
+}
+
+export async function finalizeVideoContent(req: Request, res: Response) {
+  const lesson = await lessonService.finalizeVideoContentUpload(String(req.params.id), req.user!.id, req.body.key);
+  return success(res, lesson);
+}
+
 export async function recordingUrl(req: Request, res: Response) {
   const url = await lessonService.getRecordingSignedUrl(String(req.params.id), req.user!.id);
   return success(res, { url, type: "mp4" as const });

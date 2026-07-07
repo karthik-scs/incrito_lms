@@ -14,6 +14,7 @@ import {
   PlayCircle,
   Radio,
   Trash2,
+  UploadCloud,
   Video,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -245,6 +246,9 @@ export function CurriculumEditor({
   const [hasZohoAccount, setHasZohoAccount] = useState(false);
   const [lessonError, setLessonError] = useState<string | null>(null);
   const [lessonSubmitting, setLessonSubmitting] = useState(false);
+  const [videoUploading, setVideoUploading] = useState(false);
+  const [videoUploadProgress, setVideoUploadProgress] = useState(0);
+  const [videoUploadError, setVideoUploadError] = useState<string | null>(null);
 
   function openCreateLesson(moduleId: string) {
     setEditingLesson(null);
@@ -340,6 +344,50 @@ export function CurriculumEditor({
     if (!window.confirm(`Delete "${lesson.title}"? This cannot be undone.`)) return;
     const result = await apiJson(`/api/lessons/${lesson.id}`, { method: "DELETE" });
     if (!result.ok) { window.alert(result.message); return; }
+    await load();
+  }
+
+  async function handleVideoUpload(file: File) {
+    if (!editingLesson) return;
+    setVideoUploadError(null);
+    setVideoUploading(true);
+    setVideoUploadProgress(0);
+
+    const presignRes = await apiJson<{ key: string; uploadUrl: string }>(
+      `/api/lessons/${editingLesson.id}/content/presign`,
+      { method: "POST", body: JSON.stringify({ contentType: file.type || "video/mp4" }) }
+    );
+    if (!presignRes.ok) {
+      setVideoUploading(false);
+      setVideoUploadError(presignRes.message);
+      return;
+    }
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", presignRes.data.uploadUrl);
+        xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) setVideoUploadProgress(Math.round((e.loaded / e.total) * 100));
+        };
+        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed (${xhr.status})`)));
+        xhr.onerror = () => reject(new Error("Upload failed"));
+        xhr.send(file);
+      });
+    } catch (err) {
+      setVideoUploading(false);
+      setVideoUploadError(err instanceof Error ? err.message : "Upload failed");
+      return;
+    }
+
+    const finalizeRes = await apiJson<{ contentUrl: string }>(`/api/lessons/${editingLesson.id}/content/finalize`, {
+      method: "POST",
+      body: JSON.stringify({ key: presignRes.data.key }),
+    });
+    setVideoUploading(false);
+    if (!finalizeRes.ok) { setVideoUploadError(finalizeRes.message); return; }
+    setContentUrl(finalizeRes.data.contentUrl ?? "");
     await load();
   }
 
@@ -809,11 +857,9 @@ export function CurriculumEditor({
             {editingLesson && <p className="text-xs text-text-muted mt-1">Lesson type can&apos;t be changed after creation.</p>}
           </div>
 
-          {(lessonType === "VIDEO" || lessonType === "PDF") && (
+          {lessonType === "PDF" && (
             <div>
-              <label className="text-sm font-medium text-text-secondary" htmlFor="lesson-content-url">
-                {lessonType === "VIDEO" ? "Video URL" : "PDF URL"}
-              </label>
+              <label className="text-sm font-medium text-text-secondary" htmlFor="lesson-content-url">PDF URL</label>
               <input
                 id="lesson-content-url"
                 type="url"
@@ -822,6 +868,61 @@ export function CurriculumEditor({
                 placeholder="https://…"
                 className="mt-1 w-full bg-surface border border-border rounded-md px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
               />
+            </div>
+          )}
+
+          {lessonType === "VIDEO" && (
+            <div className="flex flex-col gap-3">
+              <div>
+                <label className="text-sm font-medium text-text-secondary" htmlFor="lesson-content-url">Video URL</label>
+                <input
+                  id="lesson-content-url"
+                  type="url"
+                  value={contentUrl}
+                  onChange={(e) => setContentUrl(e.target.value)}
+                  placeholder="https://youtube.com/… or https://…"
+                  className="mt-1 w-full bg-surface border border-border rounded-md px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
+                />
+              </div>
+              {editingLesson && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <hr className="flex-1 border-border" />
+                    <span className="text-xs text-text-muted">or upload a file</span>
+                    <hr className="flex-1 border-border" />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-text-secondary">Upload video file</label>
+                    <div className="mt-1">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="file"
+                          accept="video/mp4,video/webm,video/quicktime"
+                          className="hidden"
+                          disabled={videoUploading}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleVideoUpload(file);
+                          }}
+                        />
+                        <span className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-surface border border-border text-sm text-text-secondary hover:bg-surface-secondary transition-colors">
+                          <UploadCloud size={14} />
+                          {videoUploading ? `Uploading… ${videoUploadProgress}%` : "Choose video file"}
+                        </span>
+                      </label>
+                      {videoUploading && (
+                        <div className="mt-2 h-1.5 rounded-full bg-border-light overflow-hidden">
+                          <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${videoUploadProgress}%` }} />
+                        </div>
+                      )}
+                      {videoUploadError && <p className="text-xs text-error mt-1">{videoUploadError}</p>}
+                      {contentUrl?.includes("/api/files/") && !videoUploading && (
+                        <p className="text-xs text-success mt-1 flex items-center gap-1">Video uploaded successfully</p>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           )}
 

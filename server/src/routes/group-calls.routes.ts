@@ -8,6 +8,7 @@ router.use(authenticate);
 
 // Mentor: manage their own slots
 router.get("/my-slots", asyncHandler(ctrl.mySlots));
+router.get("/my-cohorts", asyncHandler(ctrl.myCohorts));
 router.post("/", asyncHandler(ctrl.createSlot));
 router.patch("/:id", asyncHandler(ctrl.updateSlot));
 router.delete("/:id", asyncHandler(ctrl.cancelSlot));

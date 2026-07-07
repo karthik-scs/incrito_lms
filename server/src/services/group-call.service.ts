@@ -5,6 +5,7 @@ import { createZohoMeeting } from "../lib/zoho";
 
 const SLOT_INCLUDE = {
   mentor: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } },
+  cohort: { select: { id: true, name: true } },
   requests: {
     include: { student: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } } },
     orderBy: { createdAt: "asc" as const },
@@ -27,10 +28,12 @@ export async function createSlot(mentorId: string, data: {
   maxMembers?: number;
   topic?: string;
   meetingUrl?: string;
+  cohortId?: string;
 }) {
   return prisma.groupCallSlot.create({
     data: {
       mentorId,
+      cohortId: data.cohortId ?? null,
       scheduledAt: data.scheduledAt,
       durationMinutes: data.durationMinutes ?? 60,
       maxMembers: data.maxMembers ?? 5,
@@ -39,6 +42,14 @@ export async function createSlot(mentorId: string, data: {
     },
     include: SLOT_INCLUDE,
   });
+}
+
+export async function getMentorCohorts(mentorId: string) {
+  const assignments = await prisma.cohortMentor.findMany({
+    where: { userId: mentorId },
+    include: { cohort: { select: { id: true, name: true, status: true } } },
+  });
+  return assignments.map((a) => a.cohort);
 }
 
 export async function updateSlot(slotId: string, mentorId: string, data: {
@@ -138,9 +149,16 @@ export async function declineRequest(slotId: string, requestId: string, mentorId
 // ── Student: browse and request ───────────────────────────────────────────────
 
 export async function listAvailableSlots(studentId: string) {
+  // Find all cohorts this student is enrolled in, and the mentors of those cohorts
+  const enrollments = await prisma.enrollment.findMany({
+    where: { userId: studentId },
+    select: { cohortId: true },
+  });
+  const cohortIds = enrollments.map((e) => e.cohortId);
+
   const mentorships = await prisma.cohortMentor.findMany({
-    where: { cohort: { enrollments: { some: { userId: studentId } } } },
-    select: { userId: true },
+    where: { cohortId: { in: cohortIds } },
+    select: { userId: true, cohortId: true },
   });
   const mentorIds = [...new Set(mentorships.map((m) => m.userId))];
 
@@ -149,6 +167,11 @@ export async function listAvailableSlots(studentId: string) {
       mentorId: { in: mentorIds },
       status: { in: ["OPEN", "FULL"] },
       scheduledAt: { gte: new Date() },
+      // Only show slots that are either open to all (no cohortId) or targeted at one of the student's cohorts
+      OR: [
+        { cohortId: null },
+        { cohortId: { in: cohortIds } },
+      ],
     },
     include: {
       ...SLOT_INCLUDE,
@@ -162,16 +185,23 @@ export async function listAvailableSlots(studentId: string) {
 }
 
 export async function requestJoin(slotId: string, studentId: string) {
-  const slot = await prisma.groupCallSlot.findUnique({ where: { id: slotId } });
+  const slot = await prisma.groupCallSlot.findUnique({
+    where: { id: slotId },
+    include: { requests: { where: { status: "CONFIRMED" } } },
+  });
   if (!slot) throw new AppError("Session not found", 404);
   if (slot.status === "CANCELLED" || slot.status === "COMPLETED") throw new AppError("This session is no longer available", 400);
+  if (slot.status === "FULL") throw new AppError("This session is already full", 400);
 
   // Verify premium plan in a cohort with this mentor
   const premiumEnrollment = await prisma.enrollment.findFirst({
     where: {
       userId: studentId,
       plan: "INTENSIVE_PRO",
-      cohort: { mentors: { some: { userId: slot.mentorId } } },
+      cohort: {
+        mentors: { some: { userId: slot.mentorId } },
+        ...(slot.cohortId ? { id: slot.cohortId } : {}),
+      },
     },
   });
   if (!premiumEnrollment) throw new AppError("Group sessions require an Intensive Pro plan", 403);
@@ -181,17 +211,42 @@ export async function requestJoin(slotId: string, studentId: string) {
   });
   if (existing) {
     if (existing.status === "CANCELLED") {
-      return prisma.groupCallRequest.update({ where: { id: existing.id }, data: { status: "PENDING" } });
+      await prisma.groupCallRequest.update({ where: { id: existing.id }, data: { status: "CONFIRMED" } });
+    } else {
+      throw new AppError("You have already joined this session", 409);
     }
-    throw new AppError("You have already requested this session", 409);
+  } else {
+    await prisma.groupCallRequest.create({ data: { slotId, studentId, status: "CONFIRMED" } });
   }
 
-  const request = await prisma.groupCallRequest.create({
-    data: { slotId, studentId, status: "PENDING" },
-  });
+  const newConfirmedCount = slot.requests.length + 1;
+  if (newConfirmedCount >= slot.maxMembers) {
+    let meetingUrl: string | null = null;
+    if (!slot.meetingUrl) {
+      const zohoAccount = await prisma.userLiveAccount.findUnique({
+        where: { userId_provider: { userId: slot.mentorId, provider: "ZOHO" } },
+      });
+      if (zohoAccount?.isActive) {
+        const endTime = new Date(slot.scheduledAt.getTime() + slot.durationMinutes * 60 * 1000);
+        const meeting = await createZohoMeeting(zohoAccount.id, {
+          topic: slot.topic ?? "Group Session",
+          startTime: slot.scheduledAt,
+          endTime,
+        }).catch(() => null);
+        if (meeting) meetingUrl = meeting.joinUrl;
+      }
+    }
+    await prisma.groupCallSlot.update({
+      where: { id: slotId },
+      data: { status: "FULL", ...(meetingUrl ? { meetingUrl } : {}) },
+    });
+  }
 
-  await notifyUser(slot.mentorId, "ANNOUNCEMENT", "New group session request", "A student has requested to join your group session.");
-  return request;
+  const when = slot.scheduledAt.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  await notifyUser(slot.mentorId, "ANNOUNCEMENT", "Student joined group session", `A student has joined your group session on ${when}.`);
+  await notifyUser(studentId, "ANNOUNCEMENT", "Group session confirmed", `You have been confirmed for the group session on ${when}.`);
+
+  return prisma.groupCallRequest.findUnique({ where: { slotId_studentId: { slotId, studentId } } });
 }
 
 export async function cancelStudentRequest(slotId: string, studentId: string) {

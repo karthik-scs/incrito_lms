@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Bell, BookOpen, Database, HardDrive, HeadphonesIcon, Layers, Mail, Settings as SettingsIcon, Shield, ShieldCheck, User } from "lucide-react";
+import { Bell, BookOpen, Database, HardDrive, HeadphonesIcon, Layers, Mail, Server, Settings as SettingsIcon, Shield, ShieldCheck, User } from "lucide-react";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import { ProfileSettingsTab } from "@/components/settings/ProfileSettingsTab";
 import { NotificationSettingsTab } from "@/components/settings/NotificationSettingsTab";
@@ -14,14 +14,18 @@ import { PlanSettingsTab } from "@/components/settings/PlanSettingsTab";
 import { StorageSettingsTab } from "@/components/settings/StorageSettingsTab";
 import { ZohoSettingsTab } from "@/components/settings/ZohoSettingsTab";
 import { SupportSettingsTab } from "@/components/settings/SupportSettingsTab";
+import { UserStorageTab } from "@/components/settings/UserStorageTab";
+import { MyStorageTab } from "@/components/settings/MyStorageTab";
 
 const TABS = [
   { key: "profile", label: "Profile Settings", icon: User, content: ProfileSettingsTab },
+  { key: "my-storage", label: "My Storage", icon: HardDrive, content: MyStorageTab },
   { key: "notifications", label: "Notification Settings", icon: Bell, content: NotificationSettingsTab },
   { key: "email", label: "Email Configure (SMTP)", icon: Mail, content: EmailSettingsTab },
   { key: "courses", label: "Courses Settings", icon: BookOpen, content: CourseSettingsTab },
   { key: "plans", label: "Plans", icon: Layers, content: PlanSettingsTab },
   { key: "storage", label: "Storage (S3)", icon: HardDrive, content: StorageSettingsTab },
+  { key: "user-storage", label: "User Storage", icon: Server, content: UserStorageTab },
   { key: "zoho", label: "Zoho Settings", icon: Database, content: ZohoSettingsTab },
   { key: "support", label: "Support Settings", icon: HeadphonesIcon, content: SupportSettingsTab },
   { key: "security", label: "Security", icon: Shield, content: SecuritySettingsTab },

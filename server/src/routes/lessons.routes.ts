@@ -56,6 +56,8 @@ router.post(
   validate(finalizeRecordingSchema),
   asyncHandler(lessonController.finalizeRecording)
 );
+router.post("/:id/content/presign", authenticate, asyncHandler(lessonController.presignVideoContent));
+router.post("/:id/content/finalize", authenticate, asyncHandler(lessonController.finalizeVideoContent));
 router.get("/:id/live-class/recording-url", authenticate, asyncHandler(lessonController.recordingUrl));
 router.get("/:id/content-url", authenticate, asyncHandler(lessonController.contentUrl));
 // Token-authenticated routes — no session middleware needed; the IP-bound stream token carries identity.

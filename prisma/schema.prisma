@@ -122,6 +122,10 @@ model User {
   groupCallSlots    GroupCallSlot[]    @relation("MentorGroupCallSlots")
   groupCallRequests GroupCallRequest[] @relation("StudentGroupCallRequests")
 
+  // Storage tracking
+  fileUploads      FileUpload[]
+  storageLimit     UserStorageLimit?
+
   @@index([roleId])
 }
 
@@ -408,6 +412,7 @@ model Cohort {
   posts              Post[]
   mentorBookings     MentorBooking[]
   announcements      Announcement[]
+  groupCallSlots     GroupCallSlot[]
 
   @@index([courseId])
 }
@@ -1526,6 +1531,7 @@ enum GroupCallRequestStatus {
 model GroupCallSlot {
   id              String          @id @default(cuid())
   mentorId        String
+  cohortId        String?
   scheduledAt     DateTime
   durationMinutes Int             @default(60)
   maxMembers      Int             @default(5)
@@ -1536,10 +1542,12 @@ model GroupCallSlot {
   updatedAt       DateTime        @updatedAt
 
   mentor   User               @relation("MentorGroupCallSlots", fields: [mentorId], references: [id])
+  cohort   Cohort?            @relation(fields: [cohortId], references: [id], onDelete: SetNull)
   requests GroupCallRequest[]
 
   @@index([mentorId])
   @@index([scheduledAt])
+  @@index([cohortId])
 }
 
 model GroupCallRequest {
@@ -1555,4 +1563,28 @@ model GroupCallRequest {
   @@unique([slotId, studentId])
   @@index([slotId])
   @@index([studentId])
+}
+
+// ---------------------------------------------------------------------------
+// Storage: per-user file upload tracking for chat/discussion/community files
+// ---------------------------------------------------------------------------
+
+model FileUpload {
+  id        String   @id @default(cuid())
+  userId    String
+  s3Key     String
+  sizeBytes Int
+  context   String   // "CHAT" | "DISCUSSION" | "COMMUNITY"
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model UserStorageLimit {
+  userId  String @id
+  limitMb Int    @default(500)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

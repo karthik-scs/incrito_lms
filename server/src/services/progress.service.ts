@@ -219,7 +219,7 @@ export async function getRecentActivity(userId: string, courseId: string) {
 
 const STAFF_ROLES = ["Admin", "Mentor", "Cohort Manager"];
 
-export async function getCourseRoadmapForUser(userId: string, courseSlug: string, roleName?: string) {
+export async function getCourseRoadmapForUser(userId: string, courseSlug: string, roleName?: string, cohortId?: string) {
   const course = await prisma.course.findUnique({
     where: { slug: courseSlug },
     include: { mentor: { select: { id: true, firstName: true, lastName: true } } },
@@ -228,9 +228,16 @@ export async function getCourseRoadmapForUser(userId: string, courseSlug: string
     throw new AppError("Course not found", 404);
   }
 
+  // If a specific cohortId is requested (student enrolled in multiple cohorts for the same course),
+  // find that exact enrollment; otherwise fall back to the first matching enrollment.
   const enrollment = await prisma.enrollment.findFirst({
-    where: { userId, cohort: { courseId: course.id } },
+    where: {
+      userId,
+      cohort: { courseId: course.id },
+      ...(cohortId ? { cohortId } : {}),
+    },
     include: { cohort: true },
+    orderBy: { enrolledAt: "desc" },
   });
 
   /**

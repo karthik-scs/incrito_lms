@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/Badge";
 export type MyCourseCardData = {
   courseSlug: string;
   courseTitle: string;
+  cohortId: string;
   cohortName: string;
   thumbnailUrl: string | null;
   progressPercent: number;
@@ -48,7 +49,7 @@ export function MyCourseCard({ course }: { course: MyCourseCardData }) {
 
         <div className="flex items-center gap-2">
           <Link
-            href={`/courses/${course.courseSlug}/roadmap`}
+            href={`/courses/${course.courseSlug}/roadmap?cohortId=${course.cohortId}`}
             className="flex-1 text-center bg-surface border border-border text-text-primary rounded-md px-4 py-2 text-sm font-medium hover:bg-surface-secondary transition-colors"
           >
             Roadmap

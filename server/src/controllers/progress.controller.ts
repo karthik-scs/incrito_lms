@@ -8,7 +8,12 @@ export async function myCourses(req: Request, res: Response) {
 }
 
 export async function courseRoadmap(req: Request, res: Response) {
-  const roadmap = await progressService.getCourseRoadmapForUser(req.user!.id, String(req.params.slug), req.user!.roleName);
+  const roadmap = await progressService.getCourseRoadmapForUser(
+    req.user!.id,
+    String(req.params.slug),
+    req.user!.roleName,
+    req.query.cohortId ? String(req.query.cohortId) : undefined
+  );
   return success(res, roadmap);
 }
 

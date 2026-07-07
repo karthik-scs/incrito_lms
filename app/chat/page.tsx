@@ -163,7 +163,7 @@ function MessageReactionBar({
         <Smile size={13} />
       </button>
       {pickerOpen && (
-        <div className="absolute top-full left-0 mt-1 z-10">
+        <div className="absolute bottom-full left-0 mb-1 z-20">
           <EmojiPicker
             onSelect={(emoji) => {
               onReact(emoji);
@@ -347,8 +347,16 @@ export default function ChatPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploadError(null);
-    setUploading(true);
 
+    const isImage = file.type.startsWith("image/");
+    const maxBytes = isImage ? 2 * 1024 * 1024 : 10 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      setUploadError(isImage ? "Images must be smaller than 2 MB." : "Videos and other files must be smaller than 10 MB.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    setUploading(true);
     const formData = new FormData();
     formData.append("file", file);
     const result = await apiJson<{ url: string; fileType?: string }>("/api/uploads/chat-attachment", {

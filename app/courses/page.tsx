@@ -145,7 +145,7 @@ export default function MyCoursesPage() {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <Link
-                      href={`/courses/${course.courseSlug}/roadmap`}
+                      href={`/courses/${course.courseSlug}/roadmap?cohortId=${course.cohortId}`}
                       className="bg-surface border border-border text-text-primary rounded-md px-3 py-1.5 text-xs font-medium hover:bg-surface-secondary"
                     >
                       Roadmap

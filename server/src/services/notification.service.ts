@@ -20,11 +20,12 @@ const PREF_FIELD: Partial<Record<NotificationType, "enrollmentEmails" | "announc
 };
 
 async function isNotificationAllowed(userId: string, type: NotificationType): Promise<boolean> {
-  const prefField = PREF_FIELD[type];
-  if (!prefField) return true;
   const pref = await prisma.notificationPreference.findUnique({ where: { userId } });
   if (!pref) return true;
-  // Check the per-type preference only; emailEnabled is a master switch for email delivery, not in-app notifications
+  // Master switch: user has disabled all notifications.
+  if (pref.emailEnabled === false) return false;
+  const prefField = PREF_FIELD[type];
+  if (!prefField) return true;
   return pref[prefField] !== false;
 }
 

@@ -3,7 +3,7 @@ import { BookOpen, Megaphone, UserPlus, FileBarChart } from "lucide-react";
 import { DashboardCard } from "./DashboardCard";
 
 const ACTIONS = [
-  { label: "Add New Course", href: "/courses/new", icon: BookOpen },
+  { label: "Add New Course", href: "/admin/courses", icon: BookOpen },
   { label: "Manage Announcements", href: "/admin/announcements", icon: Megaphone },
   { label: "Invite Users", href: "/admin/users", icon: UserPlus },
   { label: "View Reports", href: "/admin/reports", icon: FileBarChart },

@@ -102,25 +102,48 @@ export async function deleteUser(id: string) {
   await getUser(id);
   await assertNotSuperAdmin(id);
 
-  const enrollmentCount = await prisma.enrollment.count({ where: { userId: id } });
-  if (enrollmentCount > 0) {
-    throw new AppError(
-      `This user has ${enrollmentCount} active enrolment(s). Remove them from all cohorts before deleting.`,
-      409
-    );
-  }
+  // Delete everything that references this user without onDelete: Cascade.
+  // Order: children before parents within each dependency chain.
 
-  // Delete records whose Prisma relation to User has no onDelete: Cascade.
+  // Content authored by the user (reactions first so comment/post deletes don't race with FK)
+  await prisma.reaction.deleteMany({ where: { userId: id } });
+  await prisma.pollVote.deleteMany({ where: { userId: id } });
+  // Replies cascade from parent comment, so deleting top-level comments also removes replies.
+  await prisma.comment.deleteMany({ where: { authorId: id } });
+  await prisma.post.deleteMany({ where: { authorId: id } });
+  await prisma.chatMessage.deleteMany({ where: { senderId: id } });
+
+  // Group call slots (mentor side) — deletes cascade to GroupCallRequest rows for those slots.
+  await prisma.groupCallRequest.deleteMany({ where: { studentId: id } });
+  await prisma.groupCallSlot.deleteMany({ where: { mentorId: id } });
+
+  // Activity and progress records
+  await prisma.attendance.deleteMany({ where: { userId: id } });
+  await prisma.lessonProgress.deleteMany({ where: { userId: id } });
+  await prisma.submission.deleteMany({ where: { userId: id } });
+  await prisma.assessmentAttempt.deleteMany({ where: { userId: id } });
+  await prisma.progress.deleteMany({ where: { userId: id } });
+  await prisma.leaderboardEntry.deleteMany({ where: { userId: id } });
+  await prisma.certificate.deleteMany({ where: { userId: id } });
+
+  // Membership records
+  await prisma.communityMember.deleteMany({ where: { userId: id } });
+  await prisma.enrollment.deleteMany({ where: { userId: id } });
+  await prisma.userLiveAccount.deleteMany({ where: { userId: id } });
+
+  // Role / cohort assignments
   await prisma.cohortManagerAssignment.deleteMany({ where: { userId: id } });
   await prisma.cohortMentor.deleteMany({ where: { userId: id } });
   await prisma.mentorRating.deleteMany({ where: { OR: [{ mentorId: id }, { studentId: id }] } });
   await prisma.mentorBooking.deleteMany({ where: { OR: [{ mentorId: id }, { studentId: id }] } });
 
-  // Delete records that were already covered but kept for clarity / future-proofing.
+  // Auth / session records
   await prisma.session.deleteMany({ where: { userId: id } });
   await prisma.notification.deleteMany({ where: { userId: id } });
   await prisma.verificationCode.deleteMany({ where: { userId: id } });
 
+  // ConversationParticipant, NotificationPreference, MentorAvailability all have onDelete: Cascade
+  // and will be removed automatically when the user row is deleted.
   await prisma.user.delete({ where: { id } });
 }
 

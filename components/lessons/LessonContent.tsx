@@ -39,8 +39,14 @@ function formatCountdown(ms: number) {
 
 function LiveSession({ lessonId, liveClass, title }: { lessonId: string; liveClass: NonNullable<Lesson["liveClass"]>; title: string }) {
   const remainingMs = useCountdown(liveClass.startTime);
-  const isLiveNow = liveClass.isLiveNow;
   const cancelled = liveClass.status === "CANCELLED";
+  // Recompute isLiveNow client-side every second so the button activates when the 10-min window
+  // opens without requiring a page refresh.
+  const isLiveNow =
+    !cancelled &&
+    liveClass.status !== "COMPLETED" &&
+    (!liveClass.endTime || Date.now() < new Date(liveClass.endTime).getTime()) &&
+    (liveClass.status === "LIVE" || remainingMs <= 10 * 60 * 1000);
 
   if (isLiveNow && !cancelled) {
     return <ZoomMeetingEmbed lessonId={lessonId} joinUrl={liveClass.joinUrl} title={title} />;

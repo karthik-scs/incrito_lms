@@ -46,8 +46,9 @@ export async function getMyCalendarEvents(
         if (!lesson.liveClass) continue;
         const liveClass = lesson.liveClass;
         const cohort = cohortById.get(lesson.module.cohortId);
+        const pastEnd = new Date() > new Date(liveClass.endTime);
         const effectiveStatus =
-          liveClass.status === "SCHEDULED" && new Date() > new Date(liveClass.endTime)
+          (liveClass.status === "SCHEDULED" || liveClass.status === "LIVE") && pastEnd
             ? "COMPLETED"
             : liveClass.status;
         liveClassEvents.push({
@@ -59,7 +60,7 @@ export async function getMyCalendarEvents(
           status: effectiveStatus,
           joinUrl: liveClass.joinUrl,
           hostStartUrl: liveClass.hostStartUrl,
-          isLiveNow: isLiveNow(liveClass),
+          isLiveNow: isLiveNow({ ...liveClass, status: effectiveStatus }),
           cohort: cohort ? { id: cohort.id, name: cohort.name } : null,
           course: cohort ? cohort.course : null,
           mentor: liveClass.mentor,

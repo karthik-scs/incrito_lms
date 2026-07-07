@@ -5,5 +5,6 @@ export const updateNotificationPreferenceSchema = z.object({
   enrollmentEmails: z.boolean().optional(),
   announcementEmails: z.boolean().optional(),
   certificateEmails: z.boolean().optional(),
+  liveClassEmails: z.boolean().optional(),
   productUpdateEmails: z.boolean().optional(),
 });

@@ -24,7 +24,7 @@ async function isNotificationAllowed(userId: string, type: NotificationType): Pr
   if (!prefField) return true;
   const pref = await prisma.notificationPreference.findUnique({ where: { userId } });
   if (!pref) return true;
-  if (!pref.emailEnabled) return false;
+  // Check the per-type preference only; emailEnabled is a master switch for email delivery, not in-app notifications
   return pref[prefField] !== false;
 }
 

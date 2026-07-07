@@ -8,6 +8,7 @@ import * as settingsController from "../controllers/settings.controller";
 
 const router = Router();
 
+router.get("/public", asyncHandler(settingsController.getPublic));
 router.get("/", authenticate, authorize("settings:read"), asyncHandler(settingsController.get));
 router.patch(
   "/",

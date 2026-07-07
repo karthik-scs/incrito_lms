@@ -30,20 +30,24 @@ type LessonInput = {
 };
 
 /**
- * Joinable from 10 minutes before the scheduled start onward — allows joining a bit early while
- * the session is still SCHEDULED. Status flips to LIVE/COMPLETED manually or via admin action.
+ * Returns true if the class is currently joinable.
+ * A class is NOT live once its end time has passed, regardless of the stored status —
+ * this guards against stale LIVE records that were never manually completed.
  */
-export function isLiveNow(liveClass: { startTime: Date; status: string }) {
-  if (liveClass.status === "LIVE") return true;
+export function isLiveNow(liveClass: { startTime: Date; endTime?: Date; status: string }) {
   if (liveClass.status === "CANCELLED" || liveClass.status === "COMPLETED") return false;
+  if (liveClass.endTime && new Date() > liveClass.endTime) return false;
+  if (liveClass.status === "LIVE") return true;
   return Date.now() >= liveClass.startTime.getTime() - 10 * 60 * 1000;
 }
 
+/** Auto-completes SCHEDULED or LIVE classes whose end time has passed (avoids stale DB status). */
 function withComputedStatus<T extends { liveClass: { startTime: Date; endTime: Date; status: string } | null }>(lesson: T) {
   if (!lesson.liveClass) return { ...lesson, liveClass: null };
   const lc = lesson.liveClass;
+  const pastEnd = new Date() > new Date(lc.endTime);
   const effectiveStatus =
-    lc.status === "SCHEDULED" && new Date() > new Date(lc.endTime) ? "COMPLETED" : lc.status;
+    (lc.status === "SCHEDULED" || lc.status === "LIVE") && pastEnd ? "COMPLETED" : lc.status;
   return {
     ...lesson,
     liveClass: { ...lc, status: effectiveStatus, isLiveNow: isLiveNow({ ...lc, status: effectiveStatus }) },

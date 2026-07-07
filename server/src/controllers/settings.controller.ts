@@ -19,6 +19,18 @@ export async function update(req: Request, res: Response) {
   return success(res, redact(settings));
 }
 
+export async function getPublic(_req: Request, res: Response) {
+  const settings = await settingsService.getSettings();
+  return success(res, {
+    supportEmail: settings.supportEmail,
+    supportPhone: settings.supportPhone,
+    supportCallStart: settings.supportCallStart,
+    supportCallEnd: settings.supportCallEnd,
+    supportFaqs: settings.supportFaqs,
+    platformName: settings.platformName,
+  });
+}
+
 export async function testEmail(req: Request, res: Response) {
   let toEmail: string | undefined = req.body?.email;
   if (!toEmail) {

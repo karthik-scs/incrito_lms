@@ -155,6 +155,20 @@ async function runPackaging(lessonId: string, contentUrl: string, tmpDir: string
   });
 
   console.log(`[HLS] packaged lesson ${lessonId}: ${segFiles.length} segments`);
+
+  // Notify all students enrolled in the lesson's cohort so their player can switch to HLS.
+  const lessonWithCohort = await prisma.lesson.findUnique({
+    where: { id: lessonId },
+    select: { module: { select: { cohortId: true } } },
+  });
+  if (lessonWithCohort?.module.cohortId) {
+    const enrollments = await prisma.enrollment.findMany({
+      where: { cohortId: lessonWithCohort.module.cohortId },
+      select: { userId: true },
+    });
+    const { emitToUsers } = await import("./sse.service");
+    emitToUsers(enrollments.map((e) => e.userId), "hls_ready", { lessonId });
+  }
 }
 
 function runFfmpeg(bin: string, args: string[]): Promise<void> {

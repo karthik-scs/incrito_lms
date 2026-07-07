@@ -118,6 +118,9 @@ export async function markLessonComplete(userId: string, lessonId: string) {
 
   await recomputeProgress(userId, cohortId);
 
+  const { emitToUser } = await import("./sse.service");
+  emitToUser(userId, "progress", { lessonId, cohortId });
+
   return { completed: true };
 }
 

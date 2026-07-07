@@ -36,6 +36,7 @@ import bookingsRoutes from "./bookings.routes";
 import groupCallsRoutes from "./group-calls.routes";
 import mentorRatingsRoutes from "./mentor-ratings.routes";
 import callsRoutes from "./calls.routes";
+import sseRoutes from "./sse.routes";
 
 const router = Router();
 
@@ -76,5 +77,6 @@ router.use("/bookings", bookingsRoutes);
 router.use("/group-calls", groupCallsRoutes);
 router.use("/mentor-ratings", mentorRatingsRoutes);
 router.use("/calls", callsRoutes);
+router.use("/events", sseRoutes);
 
 export default router;

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { useEvent } from "@/hooks/useEvent";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { WelcomeBanner } from "@/components/dashboard/WelcomeBanner";
@@ -25,12 +26,18 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     apiJson<DashboardResponse>("/api/me/dashboard").then((res) => {
       if (res.ok) setData(res.data);
       else setError(res.message);
     });
   }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Refresh stats when lessons are completed or enrollments change.
+  useEvent("progress", load);
+  useEvent("enrollment", load);
 
   return (
     <AdminLayout>

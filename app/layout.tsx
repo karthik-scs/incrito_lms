@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import Script from "next/script";
 import { AuthProvider } from "@/components/providers/AuthProvider";
+import { EventStreamProvider } from "@/components/providers/EventStreamProvider";
 import "./globals.css";
 
 const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark');}}catch(e){}})();`;
@@ -29,7 +30,9 @@ export default function RootLayout({
         </Script>
       </head>
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <EventStreamProvider>{children}</EventStreamProvider>
+        </AuthProvider>
       </body>
     </html>
   );

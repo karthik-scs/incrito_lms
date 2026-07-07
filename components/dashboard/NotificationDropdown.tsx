@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { useEvent } from "@/hooks/useEvent";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Award, Bell, Check, MessageSquare, Radio, Sparkles, Video, X } from "lucide-react";
@@ -66,19 +67,22 @@ export function NotificationDropdown({ mobileMode = false }: { mobileMode?: bool
   const [unreadCount, setUnreadCount] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  async function load() {
+  const load = useCallback(async () => {
     const result = await apiJson<{ notifications: Notification[]; unreadCount: number }>("/api/notifications");
     if (result.ok) {
       setNotifications(result.data.notifications);
       setUnreadCount(result.data.unreadCount);
     }
-  }
+  }, []);
 
   useEffect(() => {
     load();
-    const interval = setInterval(load, 30000);
+    const interval = setInterval(load, 30_000);
     return () => clearInterval(interval);
-  }, []);
+  }, [load]);
+
+  // Instant update when the server pushes a new notification via SSE.
+  useEvent("notification", load);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {

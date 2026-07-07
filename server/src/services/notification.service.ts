@@ -51,7 +51,10 @@ export async function notifyUser(
   message: string,
   metadata?: Prisma.InputJsonValue
 ) {
-  return prisma.notification.create({ data: { userId, type, title, message, metadata } });
+  const notification = await prisma.notification.create({ data: { userId, type, title, message, metadata } });
+  const { emitToUser } = await import("./sse.service");
+  emitToUser(userId, "notification", { id: notification.id, type, title });
+  return notification;
 }
 
 export async function notifyCohort(
@@ -69,4 +72,7 @@ export async function notifyCohort(
   await prisma.notification.createMany({
     data: userIds.map((userId) => ({ userId, type, title, message, metadata })),
   });
+
+  const { emitToUsers } = await import("./sse.service");
+  emitToUsers(userIds, "notification", { type, title });
 }

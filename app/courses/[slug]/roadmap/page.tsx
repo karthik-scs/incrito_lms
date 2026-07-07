@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { useEvent } from "@/hooks/useEvent";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { CalendarDays, Crown } from "lucide-react";
@@ -27,17 +28,20 @@ export default function CourseRoadmapPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      setError(null);
-      const result = await apiJson<Roadmap>(`/api/me/courses/${params.slug}/roadmap`);
-      if (result.ok) setRoadmap(result.data);
-      else setError(result.message);
-      setLoading(false);
-    }
-    load();
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const result = await apiJson<Roadmap>(`/api/me/courses/${params.slug}/roadmap`);
+    if (result.ok) setRoadmap(result.data);
+    else setError(result.message);
+    setLoading(false);
   }, [params.slug]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Refresh when a lesson is completed or a live class goes live/ends.
+  useEvent("progress", load);
+  useEvent("live_class", load);
 
   return (
     <AdminLayout>

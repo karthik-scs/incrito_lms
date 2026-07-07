@@ -14,7 +14,7 @@ export function clearAccessToken() {
   sessionStorage.removeItem(TOKEN_KEY);
 }
 
-async function refreshAccessToken(): Promise<string | null> {
+export async function refreshAccessToken(): Promise<string | null> {
   try {
     const res = await fetch(`${API_BASE}/api/auth/refresh`, { method: "POST", credentials: "include" });
     const body = await res.json().catch(() => null);

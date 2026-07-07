@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEvent } from "@/hooks/useEvent";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, ArrowRight, BarChart3, Calendar, CheckCircle2, Clock, TrendingUp } from "lucide-react";
@@ -32,19 +33,21 @@ export default function LearnLessonPage() {
   const [error, setError] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     const result = await apiJson<Roadmap>(`/api/me/courses/${params.slug}/roadmap`);
     if (result.ok) setRoadmap(result.data);
     else setError(result.message);
     setLoading(false);
-  }
-
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.slug]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Refresh when HLS packaging finishes for this lesson or a live class changes state.
+  useEvent("hls_ready", load);
+  useEvent("live_class", load);
+  useEvent("progress", load);
 
   const allLessons = useMemo(() => roadmap?.modules.flatMap((m) => m.lessons) ?? [], [roadmap]);
   const lesson = allLessons.find((l) => l.id === params.lessonId);

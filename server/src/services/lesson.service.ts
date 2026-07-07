@@ -283,6 +283,13 @@ export async function notifyLiveClassTransition(
       { lessonId, liveClassId: liveClass.id, courseSlug, action: "watch" }
     ).catch(() => null);
   }
+
+  // Emit a real-time event so the roadmap / learn page refreshes without a manual reload.
+  if (before.status !== liveClass.status) {
+    const enrollments = await prisma.enrollment.findMany({ where: { cohortId }, select: { userId: true } });
+    const { emitToUsers } = await import("./sse.service");
+    emitToUsers(enrollments.map((e) => e.userId), "live_class", { lessonId, status: liveClass.status });
+  }
 }
 
 

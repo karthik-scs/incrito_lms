@@ -13,13 +13,14 @@ import * as cohortController from "../controllers/cohort.controller";
 
 const router = Router();
 
-router.get("/", authenticate, authorize("cohort:read"), asyncHandler(cohortController.list));
+// Admins see all cohorts; Cohort Managers see only cohorts they manage; others need cohort:read.
+router.get("/", authenticate, asyncHandler(cohortController.list));
 router.get("/stats", authenticate, authorize("cohort:read"), asyncHandler(cohortController.stats));
 router.get("/:id", authenticate, authorize("cohort:read"), asyncHandler(cohortController.get));
 router.post(
   "/",
   authenticate,
-  authorize("cohort:write"),
+  // Cohort Managers can also create cohorts (they then manage them); full write rights for Admin.
   validate(createCohortSchema),
   asyncHandler(cohortController.create)
 );

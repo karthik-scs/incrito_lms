@@ -37,9 +37,12 @@ export async function withCohortMetrics<T extends { id: string }>(cohorts: T[]) 
   });
 }
 
-export async function listCohorts(filter: { courseId?: string }) {
+export async function listCohorts(filter: { courseId?: string; managerId?: string }) {
   const cohorts = await prisma.cohort.findMany({
-    where: { courseId: filter.courseId },
+    where: {
+      courseId: filter.courseId,
+      ...(filter.managerId ? { managers: { some: { userId: filter.managerId } } } : {}),
+    },
     include: cohortInclude,
     orderBy: { startDate: "desc" },
   });

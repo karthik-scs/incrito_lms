@@ -4,7 +4,17 @@ import { success } from "../utils/apiResponse";
 import * as cohortService from "../services/cohort.service";
 
 export async function list(req: Request, res: Response) {
-  const cohorts = await cohortService.listCohorts({ courseId: req.query.courseId as string | undefined });
+  const { roleName, id: userId, permissions } = req.user!;
+  // Cohort Managers only see cohorts they manage; Admins + cohort:read holders see all.
+  const isCohortManager = roleName === "Cohort Manager";
+  const hasReadPermission = permissions.includes("cohort:read");
+  if (!isCohortManager && !hasReadPermission) {
+    throw new AppError("You do not have permission to list cohorts", 403);
+  }
+  const cohorts = await cohortService.listCohorts({
+    courseId: req.query.courseId as string | undefined,
+    managerId: isCohortManager ? userId : undefined,
+  });
   return success(res, cohorts);
 }
 
@@ -14,6 +24,10 @@ export async function get(req: Request, res: Response) {
 }
 
 export async function create(req: Request, res: Response) {
+  const { roleName } = req.user!;
+  if (roleName !== "Admin" && roleName !== "Cohort Manager") {
+    throw new AppError("Only Admins and Cohort Managers can create cohorts", 403);
+  }
   const cohort = await cohortService.createCohort(req.body);
   return success(res, cohort, 201);
 }

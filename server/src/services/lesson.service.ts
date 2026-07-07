@@ -430,7 +430,12 @@ export async function getRecordingSignedUrl(lessonId: string, userId: string) {
     }
   }
 
-  return getPresignedGetUrl(lesson.liveClass.recordingUrl);
+  const url = lesson.liveClass.recordingUrl;
+  // External URLs (YouTube, Vimeo, direct links) are stored as-is and returned without presigning.
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    return url;
+  }
+  return getPresignedGetUrl(url);
 }
 
 /**

@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useState, useRef, type FormEvent } from "react";
-import { CheckCircle, Globe, Laptop, LogOut, Monitor, ShieldCheck, ShieldOff, Smartphone } from "lucide-react";
+import { CheckCircle, Eye, EyeOff, Globe, Laptop, LogOut, Monitor, ShieldCheck, ShieldOff, Smartphone } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { PasswordStrengthHints } from "@/components/ui/PasswordStrengthHints";
@@ -263,6 +263,9 @@ export function PersonalSecurityTab() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrentPw, setShowCurrentPw] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [showConfirmPw, setShowConfirmPw] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
@@ -329,41 +332,62 @@ export function PersonalSecurityTab() {
             <label className="text-sm font-medium text-text-secondary" htmlFor="current-password">
               Current password
             </label>
-            <input
-              id="current-password"
-              type="password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              required
-              className="mt-1 w-full bg-surface border border-border rounded-md px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
-            />
+            <div className="mt-1 relative">
+              <input
+                id="current-password"
+                type={showCurrentPw ? "text" : "password"}
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                required
+                className="w-full bg-surface border border-border rounded-md px-3 pr-10 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
+              />
+              <button type="button" onClick={() => setShowCurrentPw((p) => !p)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
+                aria-label={showCurrentPw ? "Hide password" : "Show password"}>
+                {showCurrentPw ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
           <div>
             <label className="text-sm font-medium text-text-secondary" htmlFor="new-password">
               New password
             </label>
-            <input
-              id="new-password"
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              required
-              className="mt-1 w-full bg-surface border border-border rounded-md px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
-            />
+            <div className="mt-1 relative">
+              <input
+                id="new-password"
+                type={showNewPw ? "text" : "password"}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                required
+                className="w-full bg-surface border border-border rounded-md px-3 pr-10 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
+              />
+              <button type="button" onClick={() => setShowNewPw((p) => !p)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
+                aria-label={showNewPw ? "Hide password" : "Show password"}>
+                {showNewPw ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
             {newPassword && <PasswordStrengthHints password={newPassword} />}
           </div>
           <div>
             <label className="text-sm font-medium text-text-secondary" htmlFor="confirm-password">
               Confirm new password
             </label>
-            <input
-              id="confirm-password"
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              required
-              className="mt-1 w-full bg-surface border border-border rounded-md px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
-            />
+            <div className="mt-1 relative">
+              <input
+                id="confirm-password"
+                type={showConfirmPw ? "text" : "password"}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                className="w-full bg-surface border border-border rounded-md px-3 pr-10 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
+              />
+              <button type="button" onClick={() => setShowConfirmPw((p) => !p)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
+                aria-label={showConfirmPw ? "Hide password" : "Show password"}>
+                {showConfirmPw ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
 
           {passwordError && <p className="text-sm text-error">{passwordError}</p>}

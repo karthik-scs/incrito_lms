@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BookOpen, MoreVertical } from "lucide-react";
+import { BookOpen } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 
 export type MyCourseCardData = {
@@ -22,12 +22,6 @@ export function MyCourseCard({ course }: { course: MyCourseCardData }) {
         ) : (
           <BookOpen size={32} className="text-accent" />
         )}
-        <button
-          aria-label="More options"
-          className="absolute top-3 right-3 flex items-center justify-center w-7 h-7 rounded-md bg-surface/90 text-text-secondary hover:text-text-primary"
-        >
-          <MoreVertical size={14} />
-        </button>
         <span className="absolute bottom-3 left-3">
           <Badge variant="accent">{course.cohortName}</Badge>
         </span>

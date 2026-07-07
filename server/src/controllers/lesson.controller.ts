@@ -47,7 +47,7 @@ export async function finalizeRecording(req: Request, res: Response) {
 
 export async function recordingUrl(req: Request, res: Response) {
   const url = await lessonService.getRecordingSignedUrl(String(req.params.id), req.user!.id);
-  return success(res, { url });
+  return success(res, { url, type: "mp4" as const });
 }
 
 export async function contentUrl(req: Request, res: Response) {

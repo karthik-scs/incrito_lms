@@ -43,8 +43,8 @@ export const updateLiveClassSchema = z.object({
   mentorId: z.string().min(1).optional(),
   joinUrl: z.string().url().optional(),
   status: z.enum(["SCHEDULED", "LIVE", "COMPLETED", "CANCELLED"]).optional(),
-  // No `recordingUrl` here — recordings are uploaded via the dedicated presign/finalize endpoints
-  // below, which store an S3 key, not a pasted URL.
+  // External URL recording (YouTube, Vimeo, direct link) — stored as-is alongside the S3-key path.
+  recordingUrl: z.string().url().optional(),
 });
 
 export const presignRecordingSchema = z.object({

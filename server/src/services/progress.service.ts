@@ -132,6 +132,12 @@ export async function getMyCourses(userId: string) {
     },
   });
 
+  const progressRows = await prisma.progress.findMany({
+    where: { userId, cohortId: { in: enrollments.map((e) => e.cohortId) } },
+    select: { cohortId: true, lastActivityAt: true },
+  });
+  const progressByCohort = new Map(progressRows.map((p) => [p.cohortId, p]));
+
   const results = await Promise.all(
     enrollments.map(async (enrollment) => {
       const plan = enrollment.plan;
@@ -167,6 +173,7 @@ export async function getMyCourses(userId: string) {
         nextLessonTitle: nextLesson?.title ?? null,
         status: enrollment.status,
         isComplete: lessonIds.length > 0 && completedIds.size === lessonIds.length,
+        lastActivityAt: progressByCohort.get(enrollment.cohortId)?.lastActivityAt ?? null,
       };
     })
   );

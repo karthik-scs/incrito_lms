@@ -17,6 +17,7 @@ type MyCourse = MyCourseCardData & {
   totalLessons: number;
   completedLessons: number;
   status: string;
+  lastActivityAt: string | null;
 };
 
 const SORT_OPTIONS = [
@@ -49,7 +50,14 @@ export default function MyCoursesPage() {
   const filtered = useMemo(() => {
     const rows = courses.filter((c) => (activeTab === "completed" ? c.isComplete : !c.isComplete));
     const sorted = [...rows];
-    if (sort === "progress") sorted.sort((a, b) => b.progressPercent - a.progressPercent);
+    if (sort === "recent")
+      sorted.sort((a, b) => {
+        if (!a.lastActivityAt && !b.lastActivityAt) return 0;
+        if (!a.lastActivityAt) return 1;
+        if (!b.lastActivityAt) return -1;
+        return new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime();
+      });
+    else if (sort === "progress") sorted.sort((a, b) => b.progressPercent - a.progressPercent);
     else if (sort === "title") sorted.sort((a, b) => a.courseTitle.localeCompare(b.courseTitle));
     return sorted;
   }, [courses, activeTab, sort]);

@@ -357,6 +357,7 @@ export function CurriculumEditor({
   const [recordingUploadProgress, setRecordingUploadProgress] = useState(0);
   const [recordingUploadError, setRecordingUploadError] = useState<string | null>(null);
   const [recordingUploaded, setRecordingUploaded] = useState(false);
+  const [recordingUrlInput, setRecordingUrlInput] = useState("");
 
   function openLiveModal(lesson: Lesson) {
     if (!lesson.liveClass) return;
@@ -368,6 +369,7 @@ export function CurriculumEditor({
     setEditStatus(lesson.liveClass.status);
     setRecordingUploadError(null);
     setRecordingUploaded(false);
+    setRecordingUrlInput(lesson.liveClass.recordingUrl ?? "");
     setLiveError(null);
     setLiveModalOpen(true);
   }
@@ -419,6 +421,7 @@ export function CurriculumEditor({
     setRecordingUploading(false);
     if (!finalizeRes.ok) { setRecordingUploadError(finalizeRes.message); return; }
     setRecordingUploaded(true);
+    setRecordingUrlInput(""); // S3 key is stored; clear the URL field to avoid confusion
     setEditStatus("COMPLETED");
     await load();
   }
@@ -437,6 +440,7 @@ export function CurriculumEditor({
         mentorId: editMentorId,
         joinUrl: editJoinUrl || undefined,
         status: editStatus,
+        recordingUrl: recordingUrlInput || undefined,
       }),
     });
 
@@ -960,14 +964,30 @@ export function CurriculumEditor({
           </div>
           <div>
             <label className="text-sm font-medium text-text-secondary">Recording</label>
-            <p className="text-xs text-text-muted mt-1">
-              Upload the recorded class file — uploads directly to secure storage.
+            <p className="text-xs text-text-muted mt-1 mb-2">
+              Paste a direct URL (YouTube, Vimeo, etc.) or upload the recorded video file.
             </p>
-            <div className="mt-2">
-              <input type="file" accept="video/*" disabled={recordingUploading}
-                onChange={(e) => { const file = e.target.files?.[0]; if (file) handleRecordingUpload(file); }}
-                className="text-sm text-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-surface-secondary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-text-primary hover:file:bg-border-light" />
+
+            {/* URL option */}
+            <input
+              type="url"
+              value={recordingUrlInput}
+              onChange={(e) => setRecordingUrlInput(e.target.value)}
+              placeholder="https://youtube.com/watch?v=… or any direct video URL"
+              className="w-full bg-surface border border-border rounded-md px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
+            />
+
+            <div className="flex items-center gap-2 my-2">
+              <div className="flex-1 h-px bg-border" />
+              <span className="text-xs text-text-muted">or upload</span>
+              <div className="flex-1 h-px bg-border" />
             </div>
+
+            {/* Upload option */}
+            <input type="file" accept="video/*" disabled={recordingUploading}
+              onChange={(e) => { const file = e.target.files?.[0]; if (file) handleRecordingUpload(file); }}
+              className="text-sm text-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-surface-secondary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-text-primary hover:file:bg-border-light" />
+
             {recordingUploading && (
               <div className="mt-2">
                 <div className="h-1.5 rounded-full bg-surface-secondary overflow-hidden">

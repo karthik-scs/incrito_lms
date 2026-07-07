@@ -110,7 +110,13 @@ export async function deleteUser(id: string) {
     );
   }
 
-  // Delete dependent records that don't cascade automatically, then the user.
+  // Delete records whose Prisma relation to User has no onDelete: Cascade.
+  await prisma.cohortManagerAssignment.deleteMany({ where: { userId: id } });
+  await prisma.cohortMentor.deleteMany({ where: { userId: id } });
+  await prisma.mentorRating.deleteMany({ where: { OR: [{ mentorId: id }, { studentId: id }] } });
+  await prisma.mentorBooking.deleteMany({ where: { OR: [{ mentorId: id }, { studentId: id }] } });
+
+  // Delete records that were already covered but kept for clarity / future-proofing.
   await prisma.session.deleteMany({ where: { userId: id } });
   await prisma.notification.deleteMany({ where: { userId: id } });
   await prisma.verificationCode.deleteMany({ where: { userId: id } });

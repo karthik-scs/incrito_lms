@@ -79,6 +79,9 @@ export function ProtectedVideoPlayer({ fetchUrl, posterUrl }: { fetchUrl: string
       if (result.ok) {
         setError(null);
         setContent(result.data);
+        // attachHls is a no-op if the video element isn't mounted yet (content===null renders
+        // "Loading…" with no <video>). The effect below fires after the render that mounts the
+        // video element and calls attachHls then. For subsequent refreshes the element IS present.
         attachHls(result.data);
 
         // HLS packaging in progress — retry in 10 s so we switch to HLS once it's ready.
@@ -102,6 +105,13 @@ export function ProtectedVideoPlayer({ fetchUrl, posterUrl }: { fetchUrl: string
       }
     };
   }, [fetchUrl, attachHls]);
+
+  // When content first arrives the <video> element doesn't exist yet (the component renders
+  // "Loading…"). This effect fires after the render that makes the video element appear, so
+  // attachHls always runs with a valid videoRef.current.
+  useEffect(() => {
+    if (content) attachHls(content);
+  }, [content, attachHls]);
 
   // Pause + blur when tab is hidden (skip during fullscreen to avoid false triggers).
   useEffect(() => {

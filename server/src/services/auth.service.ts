@@ -139,7 +139,11 @@ export async function signup(input: SignupInput): Promise<{ email: string }> {
     },
   });
 
-  await verificationService.issueCode(user.id, "EMAIL_VERIFICATION");
+  // Send OTP — if SMTP is not configured the user is still created and can
+  // request a resend later; don't block account creation on email delivery.
+  await verificationService.issueCode(user.id, "EMAIL_VERIFICATION").catch((err) => {
+    console.error("[signup] Failed to send verification email:", err?.message ?? err);
+  });
 
   return { email: user.email };
 }
@@ -287,7 +291,17 @@ export async function requestPasswordReset(email: string): Promise<void> {
     // Don't reveal whether the account exists.
     return;
   }
-  await verificationService.issueCode(user.id, "PASSWORD_RESET");
+  try {
+    await verificationService.issueCode(user.id, "PASSWORD_RESET");
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new AppError(
+      msg.includes("SMTP") || msg.includes("not configured")
+        ? "Password reset emails are not available right now. Please contact support."
+        : msg,
+      503
+    );
+  }
 }
 
 /** Lets the UI confirm the code before showing the new-password fields, without spending it. */

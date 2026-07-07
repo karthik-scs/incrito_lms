@@ -1,11 +1,8 @@
-/**
- * Fetches a URL and returns it as a base64 data URL.
- * Used to pre-convert cross-origin S3 image URLs before html2canvas rendering
- * so the canvas is never tainted and toDataURL() succeeds.
- */
+const BLANK_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQAABjE+ibYAAAAASUVORK5CYII=";
+
 async function toDataUrl(src: string): Promise<string> {
-  const res = await fetch(src, { mode: "cors", cache: "force-cache" });
-  if (!res.ok) throw new Error(`Failed to fetch image: ${res.status}`);
+  const res = await fetch(src, { mode: "cors", credentials: "omit" });
+  if (!res.ok) throw new Error(`Fetch ${res.status}`);
   const blob = await res.blob();
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -16,34 +13,49 @@ async function toDataUrl(src: string): Promise<string> {
 }
 
 /**
- * Clones an element off-screen, replaces every <img> src that points to an
- * external origin with a data URL fetched via CORS, then returns the clone
- * (already appended to document.body). Caller must remove it after use.
+ * Clones an element off-screen, converts every external <img> src to a data
+ * URL so html2canvas sees no cross-origin images (no taint, no CORS block).
+ * Images that cannot be fetched are replaced with a blank 1×1 PNG so they
+ * don't taint the canvas and don't throw "wrong PNG signature".
  */
 export async function buildOffscreenCanvas(source: HTMLElement): Promise<HTMLElement> {
+  const w = source.offsetWidth || 800;
+  const h = source.offsetHeight || Math.round(w / 1.41);
+
   const clone = source.cloneNode(true) as HTMLElement;
-  clone.style.cssText = `position:fixed;top:-9999px;left:-9999px;width:${source.offsetWidth}px;pointer-events:none;`;
+  clone.style.cssText = [
+    "position:fixed",
+    "top:-9999px",
+    "left:-9999px",
+    `width:${w}px`,
+    `height:${h}px`,
+    "pointer-events:none",
+    "overflow:hidden",
+  ].join(";");
   document.body.appendChild(clone);
 
   const imgs = Array.from(clone.querySelectorAll<HTMLImageElement>("img"));
   await Promise.allSettled(
     imgs.map(async (img) => {
-      if (!img.src || img.src.startsWith("data:") || img.src.startsWith("blob:")) return;
+      const src = img.getAttribute("src") ?? "";
+      if (!src || src.startsWith("data:") || src.startsWith("blob:")) return;
       try {
-        img.src = await toDataUrl(img.src);
+        img.src = await toDataUrl(src);
       } catch {
-        // If fetch fails leave src as-is; html2canvas may still handle it
+        // Replace with blank PNG so html2canvas doesn't see a cross-origin URL
+        img.src = BLANK_PNG;
       }
+      img.removeAttribute("crossorigin");
+      img.removeAttribute("crossOrigin");
     }),
   );
+
+  // Let the browser paint the clone with updated srcs before html2canvas reads it
+  await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
   return clone;
 }
 
-/**
- * Renders a DOM element to a PDF and triggers browser download.
- * Automatically patches cross-origin images to avoid the tainted-canvas error.
- */
 export async function downloadAsPdf(source: HTMLElement, fileName: string): Promise<void> {
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
     import("html2canvas"),
@@ -52,14 +64,29 @@ export async function downloadAsPdf(source: HTMLElement, fileName: string): Prom
 
   const offscreen = await buildOffscreenCanvas(source);
   try {
-    const canvas = await html2canvas(offscreen, { scale: 2, useCORS: false, allowTaint: false });
+    // All images are now data: URLs — no cross-origin risk, disable allowTaint to catch leaks early
+    const canvas = await html2canvas(offscreen, {
+      scale: 2,
+      useCORS: false,
+      allowTaint: false,
+      logging: false,
+    });
+
+    if (canvas.width === 0 || canvas.height === 0) {
+      throw new Error("Certificate rendered as an empty image. Please try again.");
+    }
+
     const imageData = canvas.toDataURL("image/png");
+    if (!imageData || imageData === "data:,") {
+      throw new Error("Could not capture certificate image. Please try again.");
+    }
+
     const pdf = new jsPDF({
       orientation: "landscape",
       unit: "px",
-      format: [canvas.width, canvas.height],
+      format: [canvas.width / 2, canvas.height / 2],
     });
-    pdf.addImage(imageData, "PNG", 0, 0, canvas.width, canvas.height);
+    pdf.addImage(imageData, "PNG", 0, 0, canvas.width / 2, canvas.height / 2);
     pdf.save(fileName);
   } finally {
     document.body.removeChild(offscreen);

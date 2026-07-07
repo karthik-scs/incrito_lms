@@ -9,6 +9,7 @@ export const createCohortSchema = z.object({
   startDate: z.coerce.date(),
   endDate: z.coerce.date().optional(),
   capacity: z.number().int().positive().optional(),
+  unlockMode: z.enum(["SEQUENTIAL", "FREE"]).optional(),
 });
 
 export const updateCohortSchema = createCohortSchema.partial().omit({ courseId: true });

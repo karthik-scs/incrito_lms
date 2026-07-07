@@ -23,13 +23,12 @@ export async function getMyCalendarEvents(
       select: { id: true, name: true, courseId: true, course: { select: { id: true, title: true, slug: true } } },
     });
     const cohortById = new Map(cohorts.map((c) => [c.id, c]));
-    const courseIds = cohorts.map((c) => c.courseId);
 
-    if (courseIds.length > 0) {
+    if (cohortIds.length > 0) {
       const lessons = await prisma.lesson.findMany({
         where: {
           type: "LIVE",
-          module: { courseId: { in: courseIds } },
+          module: { cohortId: { in: cohortIds } },
           liveClass: {
             status: { notIn: ["CANCELLED"] },
             ...(filter.mentorId ? { mentorId: filter.mentorId } : {}),
@@ -39,14 +38,14 @@ export async function getMyCalendarEvents(
         },
         include: {
           liveClass: { include: { mentor: { select: { id: true, firstName: true, lastName: true } } } },
-          module: { select: { courseId: true } },
+          module: { select: { cohortId: true } },
         },
       });
 
       for (const lesson of lessons) {
         if (!lesson.liveClass) continue;
         const liveClass = lesson.liveClass;
-        const cohort = [...cohortById.values()].find((c) => c.courseId === lesson.module.courseId);
+        const cohort = cohortById.get(lesson.module.cohortId);
         const effectiveStatus =
           liveClass.status === "SCHEDULED" && new Date() > new Date(liveClass.endTime)
             ? "COMPLETED"

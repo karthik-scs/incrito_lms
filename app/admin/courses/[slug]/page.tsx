@@ -1,574 +1,149 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import {
-  ArrowLeft,
-  Calendar,
-  ChevronDown,
-  ClipboardList,
-  Clock,
-  Crown,
-  FileText,
-  GripVertical,
-  Pencil,
-  Plus,
-  PlayCircle,
-  Radio,
-  Trash2,
-  Video,
-} from "lucide-react";
+import { ArrowLeft, BookOpen, ExternalLink } from "lucide-react";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Button } from "@/components/ui/Button";
-import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
 import { Select } from "@/components/ui/Select";
+import { MultiSelect } from "@/components/ui/MultiSelect";
 import { FileUploadField } from "@/components/ui/FileUploadField";
 import { apiJson } from "@/lib/authClient";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { LessonContentModal } from "@/components/admin/LessonContentModal";
-import { CourseCertificatesPanel } from "@/components/admin/CourseCertificatesPanel";
 
-type LessonType = "VIDEO" | "TEXT" | "PDF" | "LIVE";
-type LiveClassStatus = "SCHEDULED" | "LIVE" | "COMPLETED" | "CANCELLED";
-
-type LiveClass = {
-  id: string;
-  title: string;
-  startTime: string;
-  endTime: string;
-  status: LiveClassStatus;
-  joinUrl: string | null;
-  hostStartUrl: string | null;
-  recordingUrl: string | null;
-  mentor: { id: string; firstName: string; lastName: string };
-};
-
-type PlanAccess = "ICAP" | "INTENSIVE_PRO" | "BOTH";
-
-type Lesson = {
-  id: string;
-  moduleId: string;
-  title: string;
-  type: LessonType;
-  contentUrl: string | null;
-  thumbnailUrl: string | null;
-  content: string | null;
-  durationMinutes: number | null;
-  order: number;
-  planAccess: PlanAccess;
-  liveClassId: string | null;
-  liveClass: LiveClass | null;
-};
-
-type Module = {
-  id: string;
-  courseId: string;
-  title: string;
-  order: number;
-  planAccess: PlanAccess;
-  lessons: Lesson[];
-};
-
-const PLAN_ACCESS_OPTIONS = [
-  { value: "BOTH", label: "Both plans" },
-  { value: "ICAP", label: "ICAP only" },
-  { value: "INTENSIVE_PRO", label: "Intensive Pro only" },
-];
-
-const PLAN_ACCESS_BADGE: Record<PlanAccess, { label: string; variant: "muted" | "premium" } | null> = {
-  BOTH: null,
-  ICAP: { label: "ICAP only", variant: "muted" },
-  INTENSIVE_PRO: { label: "Intensive Pro only", variant: "premium" },
-};
+type Tag = { id: string; name: string };
+type Category = { id: string; name: string };
 
 type Course = {
   id: string;
   title: string;
   slug: string;
+  description: string | null;
+  thumbnailUrl: string | null;
   status: "DRAFT" | "PUBLISHED" | "ARCHIVED";
-  modules: Module[];
+  planAccess: "ICAP" | "INTENSIVE_PRO" | "BOTH";
+  isFree: boolean;
+  categoryId: string | null;
+  category: { id: string; name: string } | null;
+  tags: { tag: { id: string; name: string } }[];
+  mentor: { id: string; firstName: string; lastName: string };
+  _count: { cohorts: number };
 };
 
-type UserOption = { id: string; firstName: string; lastName: string; role: { name: string } };
-
-const LIVE_STATUS_VARIANT: Record<LiveClassStatus, "info" | "error" | "success" | "muted"> = {
-  SCHEDULED: "info",
-  LIVE: "error",
-  COMPLETED: "success",
-  CANCELLED: "muted",
+type Cohort = {
+  id: string;
+  name: string;
+  status: string;
+  startDate: string;
+  endDate: string | null;
+  _count: { enrollments: number };
 };
 
-const LESSON_TYPE_ICON: Record<LessonType, typeof Video> = {
-  VIDEO: Video,
-  TEXT: FileText,
-  PDF: FileText,
-  LIVE: Calendar,
-};
+const STATUS_VARIANT = {
+  DRAFT: "muted",
+  PUBLISHED: "success",
+  ARCHIVED: "neutral",
+} as const;
 
-function formatDateTimeLocal(iso: string) {
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
+const inputClass =
+  "mt-1 w-full bg-surface border border-border rounded-md px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent";
 
-type LiveAccount = { id: string; provider: "ZOOM" | "ZOHO"; isActive: boolean };
-type CohortWithMentors = { id: string; name: string; managers: { user: UserOption }[]; mentors: { user: UserOption }[] };
-
-export default function AdminCourseCurriculumPage() {
+export default function AdminCourseMetaPage() {
   const params = useParams<{ slug: string }>();
   const { user } = useAuth();
+  const isAdmin = user?.role === "Admin";
+
   const [course, setCourse] = useState<Course | null>(null);
-  const [mentors, setMentors] = useState<UserOption[]>([]);
-  const [myLiveAccounts, setMyLiveAccounts] = useState<LiveAccount[]>([]);
+  const [cohorts, setCohorts] = useState<Cohort[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Edit form state
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editThumbnailUrl, setEditThumbnailUrl] = useState<string | null>(null);
+  const [editCategoryId, setEditCategoryId] = useState("");
+  const [editTagIds, setEditTagIds] = useState<string[]>([]);
+  const [editStatus, setEditStatus] = useState<"DRAFT" | "PUBLISHED" | "ARCHIVED">("DRAFT");
+  const [editPlanAccess, setEditPlanAccess] = useState<"ICAP" | "INTENSIVE_PRO" | "BOTH">("BOTH");
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
     setError(null);
-    const [courseRes, usersRes, liveAccountsRes, cohortsRes] = await Promise.all([
+    const [courseRes, categoriesRes, tagsRes] = await Promise.all([
       apiJson<Course>(`/api/courses/${params.slug}`, { skipAuth: true }),
-      apiJson<UserOption[]>("/api/users"),
-      apiJson<LiveAccount[]>("/api/live-accounts"),
-      apiJson<CohortWithMentors[]>("/api/cohorts"),
+      apiJson<Category[]>("/api/categories", { skipAuth: true }),
+      apiJson<Tag[]>("/api/tags", { skipAuth: true }),
     ]);
-    if (courseRes.ok) setCourse(courseRes.data);
-    else setError(courseRes.message);
 
-    if (usersRes.ok) {
-      // Admin can list all users — show everyone who can host.
-      setMentors(usersRes.data.filter((u) => ["Admin", "Mentor", "Cohort Manager"].includes(u.role.name)));
-    } else if (cohortsRes.ok && user) {
-      // Mentor/Cohort Manager lack user:read — derive host options from their own cohorts instead.
-      const isMentor = user.role === "Mentor";
-      const isManager = user.role === "Cohort Manager";
-      const allMentors: UserOption[] = [];
+    if (!courseRes.ok) { setError(courseRes.message); setLoading(false); return; }
+    const c = courseRes.data;
+    setCourse(c);
+    if (categoriesRes.ok) setCategories(categoriesRes.data);
+    if (tagsRes.ok) setTags(tagsRes.data);
 
-      for (const cohort of cohortsRes.data) {
-        const isMyCohort = isMentor
-          ? cohort.mentors.some((m) => m.user.id === user.id)
-          : cohort.managers.some((m) => m.user.id === user.id);
-        if (!isMyCohort) continue;
+    const cohortsRes = await apiJson<Cohort[]>(`/api/cohorts?courseId=${c.id}`);
+    if (cohortsRes.ok) setCohorts(cohortsRes.data);
 
-        if (isManager) {
-          // Cohort Manager can pick any mentor in their cohort as host (or themselves).
-          for (const m of cohort.mentors) {
-            if (!allMentors.find((u) => u.id === m.user.id)) allMentors.push(m.user);
-          }
-        }
-      }
-
-      // Always include self as a hostable option.
-      const selfAsOption = usersRes.ok ? undefined : { id: user.id, firstName: user.firstName, lastName: user.lastName, role: { name: user.role } };
-      const deduped = selfAsOption ? [selfAsOption, ...allMentors.filter((m) => m.id !== user.id)] : allMentors;
-      setMentors(deduped as UserOption[]);
-    }
-
-    if (liveAccountsRes.ok) setMyLiveAccounts(liveAccountsRes.data.filter((a) => a.isActive));
     setLoading(false);
   }
 
-  useEffect(() => {
-    load();
-    // Re-run when user resolves from null — Mentor/CM host derivation needs user.id.
-  }, [params.slug, user?.id]);
+  useEffect(() => { load(); }, [params.slug]);
 
-  // --- Module modal ---
-  const [moduleModalOpen, setModuleModalOpen] = useState(false);
-  const [editingModule, setEditingModule] = useState<Module | null>(null);
-  const [moduleTitle, setModuleTitle] = useState("");
-  const [modulePlanAccess, setModulePlanAccess] = useState<PlanAccess>("BOTH");
-  const [moduleError, setModuleError] = useState<string | null>(null);
-  const [moduleSubmitting, setModuleSubmitting] = useState(false);
-
-  function openCreateModule() {
-    setEditingModule(null);
-    setModuleTitle("");
-    setModulePlanAccess("BOTH");
-    setModuleError(null);
-    setModuleModalOpen(true);
+  function openEdit() {
+    if (!course) return;
+    setEditTitle(course.title);
+    setEditDescription(course.description ?? "");
+    setEditThumbnailUrl(course.thumbnailUrl);
+    setEditCategoryId(course.categoryId ?? "");
+    setEditTagIds(course.tags.map((t) => t.tag.id));
+    setEditStatus(course.status);
+    setEditPlanAccess(course.planAccess);
+    setEditError(null);
+    setEditing(true);
   }
 
-  function openEditModule(module: Module) {
-    setEditingModule(module);
-    setModuleTitle(module.title);
-    setModulePlanAccess(module.planAccess);
-    setModuleError(null);
-    setModuleModalOpen(true);
-  }
-
-  async function handleModuleSubmit(e: FormEvent) {
+  async function handleSave(e: FormEvent) {
     e.preventDefault();
     if (!course) return;
-    setModuleError(null);
-    setModuleSubmitting(true);
+    setEditError(null);
+    setEditSaving(true);
 
-    const result = editingModule
-      ? await apiJson(`/api/modules/${editingModule.id}`, {
-          method: "PATCH",
-          body: JSON.stringify({ title: moduleTitle }),
-        })
-      : await apiJson("/api/modules", {
-          method: "POST",
-          body: JSON.stringify({ courseId: course.id, title: moduleTitle }),
-        });
-
-    setModuleSubmitting(false);
-    if (!result.ok) {
-      setModuleError(result.message);
-      return;
-    }
-    setModuleModalOpen(false);
-    await load();
-  }
-
-  async function handleDeleteModule(module: Module) {
-    if (!window.confirm(`Delete "${module.title}" and all its lessons? This cannot be undone.`)) return;
-    const result = await apiJson(`/api/modules/${module.id}`, { method: "DELETE" });
-    if (!result.ok) {
-      window.alert(result.message);
-      return;
-    }
-    await load();
-  }
-
-  // --- Lesson modal ---
-  const [lessonModalOpen, setLessonModalOpen] = useState(false);
-  const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
-  const [lessonModuleId, setLessonModuleId] = useState("");
-  const [lessonTitle, setLessonTitle] = useState("");
-  const [lessonType, setLessonType] = useState<LessonType>("VIDEO");
-  const [contentUrl, setContentUrl] = useState("");
-  const [thumbnailUrl, setThumbnailUrl] = useState("");
-  const [content, setContent] = useState("");
-  const [durationMinutes, setDurationMinutes] = useState("");
-  const [lessonPlanAccess, setLessonPlanAccess] = useState<PlanAccess>("BOTH");
-  const [liveStart, setLiveStart] = useState("");
-  const [liveEnd, setLiveEnd] = useState("");
-  const [liveMentorId, setLiveMentorId] = useState("");
-  const [liveProvider, setLiveProvider] = useState<"ZOOM" | "ZOHO">("ZOOM");
-  const [lessonError, setLessonError] = useState<string | null>(null);
-  const [lessonSubmitting, setLessonSubmitting] = useState(false);
-
-  function openCreateLesson(moduleId: string) {
-    setEditingLesson(null);
-    setLessonModuleId(moduleId);
-    setLessonTitle("");
-    setLessonType("VIDEO");
-    setContentUrl("");
-    setThumbnailUrl("");
-    setContent("");
-    setDurationMinutes("");
-    setLessonPlanAccess("BOTH");
-    setLiveStart("");
-    setLiveEnd("");
-    // Pre-fill host as current user — Mentors always host their own classes; Cohort Managers
-    // can change this to a mentor from their cohort, but start with themselves as default.
-    setLiveMentorId(user?.id ?? "");
-    setLiveProvider("ZOOM");
-    setLessonError(null);
-    setLessonModalOpen(true);
-  }
-
-  function openEditLesson(lesson: Lesson) {
-    setEditingLesson(lesson);
-    setLessonModuleId(lesson.moduleId);
-    setLessonTitle(lesson.title);
-    setLessonType(lesson.type);
-    setContentUrl(lesson.contentUrl ?? "");
-    setThumbnailUrl(lesson.thumbnailUrl ?? "");
-    setContent(lesson.content ?? "");
-    setDurationMinutes(lesson.durationMinutes ? String(lesson.durationMinutes) : "");
-    setLessonPlanAccess(lesson.planAccess);
-    setLessonError(null);
-    setLessonModalOpen(true);
-  }
-
-  async function handleLessonSubmit(e: FormEvent) {
-    e.preventDefault();
-    setLessonError(null);
-
-    if (lessonType === "LIVE" && !editingLesson && (!liveStart || !liveEnd || !liveMentorId)) {
-      setLessonError("Live lessons need a start time, end time and mentor");
-      return;
-    }
-
-    setLessonSubmitting(true);
-
-    if (editingLesson) {
-      const result = await apiJson(`/api/lessons/${editingLesson.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          title: lessonTitle,
-          contentUrl: lessonType !== "LIVE" ? contentUrl || undefined : undefined,
-          thumbnailUrl: lessonType === "VIDEO" ? thumbnailUrl || undefined : undefined,
-          content: lessonType === "TEXT" ? content || undefined : undefined,
-          durationMinutes: durationMinutes ? Number(durationMinutes) : undefined,
-          planAccess: lessonPlanAccess,
-        }),
-      });
-      setLessonSubmitting(false);
-      if (!result.ok) {
-        setLessonError(result.message);
-        return;
-      }
-    } else {
-      const payload = {
-        moduleId: lessonModuleId,
-        title: lessonTitle,
-        type: lessonType,
-        contentUrl: lessonType === "VIDEO" || lessonType === "PDF" ? contentUrl || undefined : undefined,
-        thumbnailUrl: lessonType === "VIDEO" ? thumbnailUrl || undefined : undefined,
-        content: lessonType === "TEXT" ? content || undefined : undefined,
-        durationMinutes: durationMinutes ? Number(durationMinutes) : undefined,
-        planAccess: lessonPlanAccess,
-        liveClass:
-          lessonType === "LIVE"
-            ? {
-                startTime: new Date(liveStart).toISOString(),
-                endTime: new Date(liveEnd).toISOString(),
-                mentorId: liveMentorId,
-                // Only use a personal account when the current user IS the host and has the selected provider connected.
-                userLiveAccountId: liveMentorId === user?.id
-                  ? (myLiveAccounts.find((a) => a.provider === liveProvider)?.id ?? undefined)
-                  : undefined,
-              }
-            : undefined,
-      };
-      const result = await apiJson("/api/lessons", { method: "POST", body: JSON.stringify(payload) });
-      setLessonSubmitting(false);
-      if (!result.ok) {
-        setLessonError(result.message);
-        return;
-      }
-    }
-
-    setLessonModalOpen(false);
-    await load();
-  }
-
-  async function handleDeleteLesson(lesson: Lesson) {
-    if (!window.confirm(`Delete "${lesson.title}"? This cannot be undone.`)) return;
-    const result = await apiJson(`/api/lessons/${lesson.id}`, { method: "DELETE" });
-    if (!result.ok) {
-      window.alert(result.message);
-      return;
-    }
-    await load();
-  }
-
-  // --- Live class modal (schedule edit / mark completed + recording) ---
-  const [liveModalOpen, setLiveModalOpen] = useState(false);
-  const [liveModalLesson, setLiveModalLesson] = useState<Lesson | null>(null);
-  const [editStart, setEditStart] = useState("");
-  const [editEnd, setEditEnd] = useState("");
-  const [editMentorId, setEditMentorId] = useState("");
-  const [editJoinUrl, setEditJoinUrl] = useState("");
-  const [editStatus, setEditStatus] = useState<LiveClassStatus>("SCHEDULED");
-  const [liveError, setLiveError] = useState<string | null>(null);
-  const [liveSubmitting, setLiveSubmitting] = useState(false);
-  const [recordingUploading, setRecordingUploading] = useState(false);
-  const [recordingUploadProgress, setRecordingUploadProgress] = useState(0);
-  const [recordingUploadError, setRecordingUploadError] = useState<string | null>(null);
-  const [recordingUploaded, setRecordingUploaded] = useState(false);
-
-  function openLiveModal(lesson: Lesson) {
-    if (!lesson.liveClass) return;
-    setLiveModalLesson(lesson);
-    setEditStart(formatDateTimeLocal(lesson.liveClass.startTime));
-    setEditEnd(formatDateTimeLocal(lesson.liveClass.endTime));
-    setEditMentorId(lesson.liveClass.mentor.id);
-    setEditJoinUrl(lesson.liveClass.joinUrl ?? "");
-    setEditStatus(lesson.liveClass.status);
-    setRecordingUploadError(null);
-    setRecordingUploaded(false);
-    setLiveError(null);
-    setLiveModalOpen(true);
-  }
-
-  async function handleViewRecording(lessonId: string) {
-    const result = await apiJson<{ url: string }>(`/api/lessons/${lessonId}/live-class/recording-url`);
-    if (!result.ok) {
-      window.alert(result.message);
-      return;
-    }
-    window.open(result.data.url, "_blank", "noreferrer");
-  }
-
-  async function handleRecordingUpload(file: File) {
-    if (!liveModalLesson) return;
-    setRecordingUploadError(null);
-    setRecordingUploading(true);
-    setRecordingUploadProgress(0);
-
-    const presignRes = await apiJson<{ key: string; uploadUrl: string }>(
-      `/api/lessons/${liveModalLesson.id}/live-class/recording/presign`,
-      { method: "POST", body: JSON.stringify({ contentType: file.type || "video/mp4" }) }
-    );
-    if (!presignRes.ok) {
-      setRecordingUploading(false);
-      setRecordingUploadError(presignRes.message);
-      return;
-    }
-
-    try {
-      // Direct browser-to-S3 upload — a multi-gigabyte recording never passes through our server.
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("PUT", presignRes.data.uploadUrl);
-        xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) setRecordingUploadProgress(Math.round((e.loaded / e.total) * 100));
-        };
-        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed (${xhr.status})`)));
-        xhr.onerror = () => reject(new Error("Upload failed"));
-        xhr.send(file);
-      });
-    } catch (err) {
-      setRecordingUploading(false);
-      setRecordingUploadError(err instanceof Error ? err.message : "Upload failed");
-      return;
-    }
-
-    const finalizeRes = await apiJson(`/api/lessons/${liveModalLesson.id}/live-class/recording/finalize`, {
-      method: "POST",
-      body: JSON.stringify({ key: presignRes.data.key }),
-    });
-    setRecordingUploading(false);
-    if (!finalizeRes.ok) {
-      setRecordingUploadError(finalizeRes.message);
-      return;
-    }
-    setRecordingUploaded(true);
-    setEditStatus("COMPLETED");
-    await load();
-  }
-
-  async function handleLiveSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (!liveModalLesson) return;
-    setLiveError(null);
-    setLiveSubmitting(true);
-
-    const result = await apiJson(`/api/lessons/${liveModalLesson.id}/live-class`, {
+    const result = await apiJson<Course>(`/api/courses/${course.id}`, {
       method: "PATCH",
       body: JSON.stringify({
-        startTime: new Date(editStart).toISOString(),
-        endTime: new Date(editEnd).toISOString(),
-        mentorId: editMentorId,
-        joinUrl: editJoinUrl || undefined,
+        title: editTitle,
+        description: editDescription || undefined,
+        thumbnailUrl: editThumbnailUrl || undefined,
+        categoryId: editCategoryId || undefined,
+        tagIds: editTagIds,
         status: editStatus,
+        planAccess: editPlanAccess,
       }),
     });
 
-    setLiveSubmitting(false);
-    if (!result.ok) {
-      setLiveError(result.message);
-      return;
-    }
-    setLiveModalOpen(false);
-    await load();
+    setEditSaving(false);
+    if (!result.ok) { setEditError(result.message); return; }
+    setCourse(result.data);
+    setEditing(false);
   }
 
-  const mentorOptions = useMemo(
-    () => mentors.map((m) => ({ value: m.id, label: `${m.firstName} ${m.lastName}` })),
-    [mentors]
-  );
-
-  // --- Lesson content modal (quizzes / assignments / resources) ---
-  const [contentScope, setContentScope] = useState<{ lessonId: string; moduleId: string; courseId: string } | null>(null);
-
-  function openContentModal(lesson: Lesson) {
-    if (!course) return;
-    setContentScope({ lessonId: lesson.id, moduleId: lesson.moduleId, courseId: course.id });
-  }
-
-  // --- Module accordion ---
-  const [openModules, setOpenModules] = useState<Record<string, boolean>>({});
-
-  useEffect(() => {
-    if (!course) return;
-    setOpenModules((prev) => {
-      const next = { ...prev };
-      let changed = false;
-      for (const m of course.modules) {
-        if (!(m.id in next)) {
-          next[m.id] = true;
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [course]);
-
-  function toggleModule(id: string) {
-    setOpenModules((prev) => ({ ...prev, [id]: !prev[id] }));
-  }
-
-  // --- Drag-and-drop reordering (native HTML5 DnD — modules within the course, lessons within a module) ---
-  const [draggedModuleId, setDraggedModuleId] = useState<string | null>(null);
-  const [draggedLesson, setDraggedLesson] = useState<{ moduleId: string; lessonId: string } | null>(null);
-
-  async function handleModuleDrop(targetId: string) {
-    if (!course || !draggedModuleId || draggedModuleId === targetId) {
-      setDraggedModuleId(null);
-      return;
-    }
-    const ids = course.modules.map((m) => m.id);
-    const fromIdx = ids.indexOf(draggedModuleId);
-    const toIdx = ids.indexOf(targetId);
-    ids.splice(fromIdx, 1);
-    ids.splice(toIdx, 0, draggedModuleId);
-
-    const byId = new Map(course.modules.map((m) => [m.id, m]));
-    setCourse({ ...course, modules: ids.map((id) => byId.get(id)!) });
-    setDraggedModuleId(null);
-
-    const result = await apiJson("/api/modules/reorder", {
-      method: "PATCH",
-      body: JSON.stringify({ courseId: course.id, orderedIds: ids }),
-    });
-    if (!result.ok) {
-      window.alert(result.message);
-      await load();
-    }
-  }
-
-  async function handleLessonDrop(moduleId: string, targetLessonId: string) {
-    if (!course || !draggedLesson || draggedLesson.moduleId !== moduleId || draggedLesson.lessonId === targetLessonId) {
-      setDraggedLesson(null);
-      return;
-    }
-    const module = course.modules.find((m) => m.id === moduleId);
-    if (!module) return;
-    const ids = module.lessons.map((l) => l.id);
-    const fromIdx = ids.indexOf(draggedLesson.lessonId);
-    const toIdx = ids.indexOf(targetLessonId);
-    ids.splice(fromIdx, 1);
-    ids.splice(toIdx, 0, draggedLesson.lessonId);
-
-    const byId = new Map(module.lessons.map((l) => [l.id, l]));
-    setCourse({
-      ...course,
-      modules: course.modules.map((m) => (m.id === moduleId ? { ...m, lessons: ids.map((id) => byId.get(id)!) } : m)),
-    });
-    setDraggedLesson(null);
-
-    const result = await apiJson("/api/lessons/reorder", {
-      method: "PATCH",
-      body: JSON.stringify({ moduleId, orderedIds: ids }),
-    });
-    if (!result.ok) {
-      window.alert(result.message);
-      await load();
-    }
-  }
+  const categoryOptions = [{ value: "", label: "No category" }, ...categories.map((c) => ({ value: c.id, label: c.name }))];
+  const tagOptions = tags.map((t) => ({ value: t.id, label: t.name }));
 
   return (
     <AdminLayout>
-      <Link href="/admin/courses" className="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary">
+      <Link
+        href="/admin/courses"
+        className="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary"
+      >
         <ArrowLeft size={14} />
         Back to Courses
       </Link>
@@ -578,598 +153,198 @@ export default function AdminCourseCurriculumPage() {
 
       {course && (
         <>
-          <div className="mt-4 flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-semibold text-text-primary">{course.title}</h1>
-              <p className="text-sm text-text-secondary mt-1">Manage modules and lessons for this course.</p>
+          <div className="mt-4 flex items-start gap-5">
+            {/* Thumbnail */}
+            <div className="w-32 h-20 rounded-xl overflow-hidden bg-accent-light shrink-0 flex items-center justify-center">
+              {course.thumbnailUrl ? (
+                <img src={course.thumbnailUrl} alt={course.title} className="w-full h-full object-cover" />
+              ) : (
+                <BookOpen size={24} className="text-accent" />
+              )}
             </div>
-            <Button onClick={openCreateModule}>
-              <Plus size={16} />
-              New Module
-            </Button>
-          </div>
-
-          <div className="mt-6">
-            <CourseCertificatesPanel
-              courseId={course.id}
-              modules={course.modules.map((m) => ({ id: m.id, title: m.title }))}
-              canManage={user?.role !== "Mentor"}
-            />
-          </div>
-
-          <div className="mt-6 flex flex-col gap-4">
-            {course.modules.length === 0 && (
-              <p className="text-sm text-text-muted py-12 text-center bg-surface border border-border rounded-2xl">
-                No modules yet. Add one to start building this course's curriculum.
-              </p>
-            )}
-
-            {course.modules.map((module) => {
-              const isOpen = openModules[module.id] !== false;
-              return (
-              <div
-                key={module.id}
-                draggable
-                onDragStart={() => setDraggedModuleId(module.id)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => handleModuleDrop(module.id)}
-                className={`bg-surface border border-border rounded-2xl p-5 transition-opacity ${
-                  draggedModuleId === module.id ? "opacity-50" : ""
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-text-muted cursor-grab active:cursor-grabbing shrink-0" aria-label="Drag to reorder module">
-                      <GripVertical size={15} />
-                    </span>
-                    <button
-                      onClick={() => toggleModule(module.id)}
-                      className="flex items-center gap-2 min-w-0"
-                      aria-expanded={isOpen}
-                    >
-                      <ChevronDown
-                        size={16}
-                        className={`text-text-muted shrink-0 transition-transform ${isOpen ? "" : "-rotate-90"}`}
-                      />
-                      <h2 className="text-base font-semibold text-text-primary truncate">{module.title}</h2>
-                    </button>
-                    {PLAN_ACCESS_BADGE[module.planAccess] && (
-                      <Badge
-                        variant={PLAN_ACCESS_BADGE[module.planAccess]!.variant}
-                        size={module.planAccess === "INTENSIVE_PRO" ? "md" : "sm"}
-                      >
-                        {module.planAccess === "INTENSIVE_PRO" && <Crown size={13} className="mr-1 inline" />}
-                        {PLAN_ACCESS_BADGE[module.planAccess]!.label}
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => openEditModule(module)}
-                      aria-label="Edit module"
-                      className="text-text-muted hover:text-accent rounded-md p-1.5"
-                    >
-                      <Pencil size={15} />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteModule(module)}
-                      aria-label="Delete module"
-                      className="text-text-muted hover:text-error rounded-md p-1.5"
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h1 className="text-2xl font-semibold text-text-primary">{course.title}</h1>
+                  <p className="text-sm text-text-secondary mt-0.5">
+                    {course.mentor.firstName} {course.mentor.lastName} · /{course.slug}
+                  </p>
                 </div>
-
-                {isOpen && (
-                <>
-                <div className="mt-3 flex flex-col gap-2">
-                  {module.lessons.length === 0 && <p className="text-sm text-text-muted py-2">No lessons yet.</p>}
-                  {module.lessons.map((lesson) => {
-                    const Icon = LESSON_TYPE_ICON[lesson.type];
-                    return (
-                      <div
-                        key={lesson.id}
-                        draggable
-                        onDragStart={() => setDraggedLesson({ moduleId: module.id, lessonId: lesson.id })}
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={() => handleLessonDrop(module.id, lesson.id)}
-                        className={`flex items-center gap-3 bg-surface-secondary rounded-lg px-3 py-2.5 transition-opacity ${
-                          draggedLesson?.lessonId === lesson.id ? "opacity-50" : ""
-                        }`}
-                      >
-                        <span className="text-text-muted cursor-grab active:cursor-grabbing shrink-0" aria-label="Drag to reorder lesson">
-                          <GripVertical size={14} />
-                        </span>
-                        <Icon size={15} className="text-text-muted shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm font-medium text-text-primary truncate">{lesson.title}</p>
-                            {PLAN_ACCESS_BADGE[lesson.planAccess] && (
-                              <Badge
-                                variant={PLAN_ACCESS_BADGE[lesson.planAccess]!.variant}
-                                size={lesson.planAccess === "INTENSIVE_PRO" ? "md" : "sm"}
-                              >
-                                {lesson.planAccess === "INTENSIVE_PRO" && <Crown size={13} className="mr-1 inline" />}
-                                {PLAN_ACCESS_BADGE[lesson.planAccess]!.label}
-                              </Badge>
-                            )}
-                          </div>
-                          {lesson.type === "LIVE" && lesson.liveClass ? (
-                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                              <Badge variant={LIVE_STATUS_VARIANT[lesson.liveClass.status]}>{lesson.liveClass.status}</Badge>
-                              <span className="text-xs text-text-muted flex items-center gap-1">
-                                <Calendar size={11} />
-                                {new Date(lesson.liveClass.startTime).toLocaleString(undefined, {
-                                  month: "short",
-                                  day: "numeric",
-                                  hour: "numeric",
-                                  minute: "2-digit",
-                                })}
-                              </span>
-                              <span className="text-xs text-text-muted">
-                                Mentor: {lesson.liveClass.mentor.firstName} {lesson.liveClass.mentor.lastName}
-                              </span>
-                              {lesson.liveClass.status === "COMPLETED" && lesson.liveClass.recordingUrl && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleViewRecording(lesson.id)}
-                                  className="text-xs text-accent hover:text-accent-dark font-medium flex items-center gap-1"
-                                >
-                                  <PlayCircle size={11} />
-                                  View recording
-                                </button>
-                              )}
-                              {lesson.liveClass.status !== "COMPLETED" && lesson.liveClass.hostStartUrl && (
-                                <a
-                                  href={lesson.liveClass.hostStartUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-xs text-accent hover:text-accent-dark font-medium flex items-center gap-1"
-                                >
-                                  <Radio size={11} />
-                                  Host link (mentor)
-                                </a>
-                              )}
-                            </div>
-                          ) : (
-                            <p className="text-xs text-text-muted mt-0.5 flex items-center gap-1">
-                              <Clock size={11} />
-                              {lesson.durationMinutes ? `${lesson.durationMinutes}m` : "—"}
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                          {lesson.type === "LIVE" && lesson.liveClass && (
-                            <button
-                              onClick={() => openLiveModal(lesson)}
-                              className="flex items-center gap-1 bg-surface border border-border text-text-primary rounded-md px-2.5 py-1.5 text-xs font-medium hover:bg-surface-secondary"
-                            >
-                              <Radio size={12} />
-                              Schedule
-                            </button>
-                          )}
-                          <button
-                            onClick={() => openContentModal(lesson)}
-                            className="flex items-center gap-1 bg-surface border border-border text-text-primary rounded-md px-2.5 py-1.5 text-xs font-medium hover:bg-surface-secondary"
-                          >
-                            <ClipboardList size={12} />
-                            Content
-                          </button>
-                          <button
-                            onClick={() => openEditLesson(lesson)}
-                            aria-label="Edit lesson"
-                            className="text-text-muted hover:text-accent rounded-md p-1.5"
-                          >
-                            <Pencil size={14} />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteLesson(lesson)}
-                            aria-label="Delete lesson"
-                            className="text-text-muted hover:text-error rounded-md p-1.5"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
+                <div className="flex items-center gap-2 shrink-0">
+                  <Badge variant={STATUS_VARIANT[course.status]}>{course.status}</Badge>
+                  {isAdmin && (
+                    <Button variant="secondary" onClick={openEdit}>
+                      Edit
+                    </Button>
+                  )}
                 </div>
-
-                <Button variant="secondary" onClick={() => openCreateLesson(module.id)} className="mt-3">
-                  <Plus size={14} />
-                  Add Lesson
-                </Button>
-                </>
-                )}
               </div>
-              );
-            })}
+              {course.description && (
+                <p className="text-sm text-text-secondary mt-2 line-clamp-2">{course.description}</p>
+              )}
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                {course.category && (
+                  <Badge variant="info">{course.category.name}</Badge>
+                )}
+                {course.tags.map((t) => (
+                  <Badge key={t.tag.id} variant="muted">{t.tag.name}</Badge>
+                ))}
+              </div>
+            </div>
           </div>
+
+          {/* Info callout */}
+          <div className="mt-6 flex items-start gap-3 bg-surface border border-border rounded-2xl p-5">
+            <BookOpen size={18} className="text-accent shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-text-primary">Curriculum is managed per cohort</p>
+              <p className="text-sm text-text-secondary mt-0.5">
+                Each cohort has its own independent modules, lessons, and navigation settings. Open a cohort below to manage its curriculum.
+              </p>
+            </div>
+          </div>
+
+          {/* Metadata card */}
+          <div className="mt-6 bg-surface border border-border rounded-2xl p-6">
+            <h2 className="text-base font-semibold text-text-primary">Course details</h2>
+            <dl className="mt-4 grid grid-cols-3 gap-y-3 text-sm">
+              <dt className="text-text-secondary">Description</dt>
+              <dd className="text-text-primary col-span-2">{course.description || <span className="text-text-muted">—</span>}</dd>
+              <dt className="text-text-secondary">Category</dt>
+              <dd className="text-text-primary col-span-2">{course.category?.name || <span className="text-text-muted">—</span>}</dd>
+              <dt className="text-text-secondary">Tags</dt>
+              <dd className="text-text-primary col-span-2">
+                {course.tags.length > 0 ? course.tags.map((t) => t.tag.name).join(", ") : <span className="text-text-muted">—</span>}
+              </dd>
+              <dt className="text-text-secondary">Plan access</dt>
+              <dd className="text-text-primary col-span-2">
+                {course.planAccess === "BOTH" ? "All plans" : course.planAccess === "ICAP" ? "ICAP only" : "Intensive Pro only"}
+              </dd>
+              <dt className="text-text-secondary">Pricing</dt>
+              <dd className="text-text-primary col-span-2">{course.isFree ? "Free" : "Paid"}</dd>
+              <dt className="text-text-secondary">Cohorts</dt>
+              <dd className="text-text-primary col-span-2">{course._count.cohorts}</dd>
+            </dl>
+          </div>
+
+          {/* Cohorts list */}
+          <div className="mt-6 bg-surface border border-border rounded-2xl p-6">
+            <h2 className="text-base font-semibold text-text-primary">Cohorts</h2>
+            <p className="text-sm text-text-secondary mt-1">Open a cohort to view or edit its curriculum and members.</p>
+
+            <div className="mt-4 flex flex-col gap-2">
+              {cohorts.length === 0 && (
+                <p className="text-sm text-text-muted py-4">
+                  No cohorts yet.{" "}
+                  {isAdmin && (
+                    <Link href="/admin/cohorts" className="text-accent hover:text-accent-dark">
+                      Create one here.
+                    </Link>
+                  )}
+                </p>
+              )}
+              {cohorts.map((cohort) => (
+                <Link
+                  key={cohort.id}
+                  href={`/admin/cohorts/${cohort.id}`}
+                  className="flex items-center justify-between bg-surface-secondary rounded-lg px-4 py-3 hover:bg-border-light transition-colors group"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-text-primary">{cohort.name}</p>
+                    <p className="text-xs text-text-muted mt-0.5">
+                      {new Date(cohort.startDate).toLocaleDateString()} · {cohort._count.enrollments} students
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={cohort.status === "ACTIVE" ? "success" : "info"}>{cohort.status}</Badge>
+                    <ExternalLink size={14} className="text-text-muted group-hover:text-accent" />
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          {/* Edit modal */}
+          {editing && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto">
+              <div className="w-full max-w-lg bg-surface rounded-2xl shadow-xl p-6 my-4">
+                <h2 className="text-base font-semibold text-text-primary mb-4">Edit course</h2>
+                <form onSubmit={handleSave} className="flex flex-col gap-4">
+                  <div>
+                    <label className="text-sm font-medium text-text-secondary">Title</label>
+                    <input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} required className={inputClass} />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-text-secondary">Description</label>
+                    <textarea
+                      value={editDescription}
+                      onChange={(e) => setEditDescription(e.target.value)}
+                      rows={3}
+                      className={inputClass}
+                    />
+                  </div>
+                  <FileUploadField
+                    label="Thumbnail"
+                    endpoint="/api/uploads/course-thumbnail"
+                    accept="image/png,image/jpeg,image/webp"
+                    value={editThumbnailUrl}
+                    onUploaded={setEditThumbnailUrl}
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-sm font-medium text-text-secondary">Category</label>
+                      <div className="mt-1">
+                        <Select value={editCategoryId} onChange={setEditCategoryId} options={categoryOptions} />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-text-secondary">Status</label>
+                      <div className="mt-1">
+                        <Select
+                          value={editStatus}
+                          onChange={(v) => setEditStatus(v as "DRAFT" | "PUBLISHED" | "ARCHIVED")}
+                          options={[
+                            { value: "DRAFT", label: "Draft" },
+                            { value: "PUBLISHED", label: "Published" },
+                            { value: "ARCHIVED", label: "Archived" },
+                          ]}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-text-secondary">Tags</label>
+                    <div className="mt-1">
+                      <MultiSelect values={editTagIds} onChange={setEditTagIds} options={tagOptions} placeholder="No tags" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-text-secondary">Plan access</label>
+                    <div className="mt-1">
+                      <Select
+                        value={editPlanAccess}
+                        onChange={(v) => setEditPlanAccess(v as "ICAP" | "INTENSIVE_PRO" | "BOTH")}
+                        options={[
+                          { value: "BOTH", label: "All plans" },
+                          { value: "ICAP", label: "ICAP only" },
+                          { value: "INTENSIVE_PRO", label: "Intensive Pro only" },
+                        ]}
+                      />
+                    </div>
+                  </div>
+                  {editError && <p className="text-sm text-error">{editError}</p>}
+                  <div className="flex justify-end gap-2 mt-2">
+                    <Button variant="secondary" type="button" onClick={() => setEditing(false)}>Cancel</Button>
+                    <Button type="submit" disabled={editSaving}>
+                      {editSaving ? "Saving…" : "Save changes"}
+                    </Button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </>
       )}
-
-      {/* Module modal */}
-      <Modal open={moduleModalOpen} onClose={() => setModuleModalOpen(false)} title={editingModule ? "Edit Module" : "New Module"}>
-        <form onSubmit={handleModuleSubmit} className="flex flex-col gap-4">
-          <div>
-            <label className="text-sm font-medium text-text-secondary" htmlFor="module-title">
-              Title
-            </label>
-            <input
-              id="module-title"
-              value={moduleTitle}
-              onChange={(e) => setModuleTitle(e.target.value)}
-              required
-              placeholder="Module 1: Foundations"
-              className="mt-1 w-full bg-surface border border-border rounded-md px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
-            />
-          </div>
-          {moduleError && <p className="text-sm text-error">{moduleError}</p>}
-          <div className="flex justify-end gap-2 mt-2">
-            <Button variant="secondary" onClick={() => setModuleModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={moduleSubmitting}>
-              {moduleSubmitting ? "Saving…" : editingModule ? "Save changes" : "Create module"}
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Lesson modal */}
-      <Modal
-        open={lessonModalOpen}
-        onClose={() => setLessonModalOpen(false)}
-        title={editingLesson ? "Edit Lesson" : "New Lesson"}
-        maxWidth="max-w-lg"
-      >
-        <form onSubmit={handleLessonSubmit} className="flex flex-col gap-4">
-          <div>
-            <label className="text-sm font-medium text-text-secondary" htmlFor="lesson-title">
-              Title
-            </label>
-            <input
-              id="lesson-title"
-              value={lessonTitle}
-              onChange={(e) => setLessonTitle(e.target.value)}
-              required
-              className="mt-1 w-full bg-surface border border-border rounded-md px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
-            />
-          </div>
-
-          <div>
-            <label className="text-sm font-medium text-text-secondary">Lesson type</label>
-            <div className="mt-1">
-              <Select
-                value={lessonType}
-                onChange={(v) => setLessonType(v as LessonType)}
-                options={[
-                  { value: "VIDEO", label: "Video (recorded)" },
-                  { value: "LIVE", label: "Live class" },
-                  { value: "TEXT", label: "Text" },
-                  { value: "PDF", label: "PDF" },
-                ]}
-              />
-            </div>
-            {editingLesson && (
-              <p className="text-xs text-text-muted mt-1">Lesson type can't be changed after creation.</p>
-            )}
-          </div>
-
-          {(lessonType === "VIDEO" || lessonType === "PDF") && (
-            <div>
-              <label className="text-sm font-medium text-text-secondary" htmlFor="lesson-content-url">
-                {lessonType === "VIDEO" ? "Video URL" : "PDF URL"}
-              </label>
-              <input
-                id="lesson-content-url"
-                type="url"
-                value={contentUrl}
-                onChange={(e) => setContentUrl(e.target.value)}
-                placeholder="https://…"
-                className="mt-1 w-full bg-surface border border-border rounded-md px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
-              />
-            </div>
-          )}
-
-          {lessonType === "VIDEO" && (
-            <FileUploadField
-              label="Thumbnail (shown before the video starts playing)"
-              endpoint="/api/uploads/lesson-thumbnail"
-              accept="image/png,image/jpeg,image/webp"
-              value={thumbnailUrl || null}
-              onUploaded={(url) => setThumbnailUrl(url)}
-            />
-          )}
-
-          {lessonType === "TEXT" && (
-            <div>
-              <label className="text-sm font-medium text-text-secondary" htmlFor="lesson-content">
-                Content
-              </label>
-              <textarea
-                id="lesson-content"
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                rows={4}
-                className="mt-1 w-full bg-surface border border-border rounded-md px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
-              />
-            </div>
-          )}
-
-          {lessonType !== "LIVE" && (
-            <div>
-              <label className="text-sm font-medium text-text-secondary" htmlFor="lesson-duration">
-                Duration (minutes)
-              </label>
-              <input
-                id="lesson-duration"
-                type="number"
-                min={1}
-                value={durationMinutes}
-                onChange={(e) => setDurationMinutes(e.target.value)}
-                className="mt-1 w-32 bg-surface border border-border rounded-md px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
-              />
-            </div>
-          )}
-
-          <div>
-            <label className="text-sm font-medium text-text-secondary">Plan access</label>
-            <div className="mt-1">
-              <Select value={lessonPlanAccess} onChange={(v) => setLessonPlanAccess(v as PlanAccess)} options={PLAN_ACCESS_OPTIONS} />
-            </div>
-          </div>
-
-          {lessonType === "LIVE" && !editingLesson && (
-            <>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium text-text-secondary" htmlFor="live-start">
-                    Start time
-                  </label>
-                  <input
-                    id="live-start"
-                    type="datetime-local"
-                    value={liveStart}
-                    onChange={(e) => setLiveStart(e.target.value)}
-                    required
-                    className="mt-1 w-full bg-surface border border-border rounded-md px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-text-secondary" htmlFor="live-end">
-                    End time
-                  </label>
-                  <input
-                    id="live-end"
-                    type="datetime-local"
-                    value={liveEnd}
-                    onChange={(e) => setLiveEnd(e.target.value)}
-                    required
-                    className="mt-1 w-full bg-surface border border-border rounded-md px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-text-secondary">Host</label>
-                <div className="mt-1">
-                  <Select value={liveMentorId} onChange={setLiveMentorId} options={mentorOptions} placeholder="Select host (Admin, Mentor, or Cohort Manager)" />
-                </div>
-              </div>
-
-              {/* Meeting Provider selector — shown as soon as a host is chosen */}
-              {liveMentorId && (() => {
-                const isCurrentUser = liveMentorId === user?.id;
-                const hasZoom = myLiveAccounts.some((a) => a.provider === "ZOOM");
-                const hasZoho = myLiveAccounts.some((a) => a.provider === "ZOHO");
-
-                return (
-                  <div>
-                    <label className="text-sm font-medium text-text-secondary">Meeting Provider</label>
-                    <div className="mt-2 grid grid-cols-2 gap-3">
-                      {/* Zoom option */}
-                      <button
-                        type="button"
-                        onClick={() => setLiveProvider("ZOOM")}
-                        className={`flex flex-col items-center gap-2 rounded-xl border-2 p-4 transition-colors ${
-                          liveProvider === "ZOOM"
-                            ? "border-accent bg-accent-light"
-                            : "border-border bg-surface-secondary hover:border-accent/50"
-                        }`}
-                      >
-                        <Video size={22} className={liveProvider === "ZOOM" ? "text-accent" : "text-text-muted"} />
-                        <div className="text-center">
-                          <p className={`text-sm font-semibold ${liveProvider === "ZOOM" ? "text-accent" : "text-text-primary"}`}>Zoom</p>
-                          <p className="text-xs text-text-muted mt-0.5">
-                            {isCurrentUser && hasZoom ? "Your Zoom account" : "Platform shared pool"}
-                          </p>
-                        </div>
-                      </button>
-
-                      {/* Zoho option */}
-                      <button
-                        type="button"
-                        onClick={() => setLiveProvider("ZOHO")}
-                        className={`flex flex-col items-center gap-2 rounded-xl border-2 p-4 transition-colors ${
-                          liveProvider === "ZOHO"
-                            ? "border-accent bg-accent-light"
-                            : "border-border bg-surface-secondary hover:border-accent/50"
-                        }`}
-                      >
-                        <Radio size={22} className={liveProvider === "ZOHO" ? "text-accent" : "text-text-muted"} />
-                        <div className="text-center">
-                          <p className={`text-sm font-semibold ${liveProvider === "ZOHO" ? "text-accent" : "text-text-primary"}`}>Zoho Meeting</p>
-                          <p className="text-xs text-text-muted mt-0.5">
-                            {isCurrentUser && hasZoho ? "Your Zoho account" : "Connect in Settings"}
-                          </p>
-                        </div>
-                      </button>
-                    </div>
-
-                    {/* Status line below the provider cards */}
-                    <div className="mt-2">
-                      {liveProvider === "ZOHO" && isCurrentUser && !hasZoho && (
-                        <p className="text-xs text-warning bg-warning/10 rounded-md px-3 py-2">
-                          You haven't connected a Zoho account yet.{" "}
-                          <a href="/settings" target="_blank" rel="noreferrer" className="underline font-medium">
-                            Connect it in Settings → Live Class Accounts
-                          </a>{" "}
-                          first.
-                        </p>
-                      )}
-                      {liveProvider === "ZOHO" && !isCurrentUser && (
-                        <p className="text-xs text-text-muted bg-surface-secondary rounded-md px-3 py-2">
-                          To use Zoho, select yourself as the host — another user's Zoho account can't be accessed from here.
-                        </p>
-                      )}
-                      {liveProvider === "ZOOM" && (
-                        <p className="text-xs text-text-muted">
-                          {isCurrentUser && hasZoom
-                            ? "Uses your connected personal Zoom account — the meeting link opens in a new tab."
-                            : "Uses the platform's shared Zoom account pool — the meeting link opens in a new tab."}
-                        </p>
-                      )}
-                      {liveProvider === "ZOHO" && isCurrentUser && hasZoho && (
-                        <p className="text-xs text-text-muted">
-                          Uses your connected Zoho account — join link opens in a new tab.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                );
-              })()}
-            </>
-          )}
-
-          {lessonType === "LIVE" && editingLesson && (
-            <p className="text-xs text-text-muted">Use the "Schedule" button on the lesson to edit its live session.</p>
-          )}
-
-          {lessonError && <p className="text-sm text-error">{lessonError}</p>}
-          <div className="flex justify-end gap-2 mt-2">
-            <Button variant="secondary" onClick={() => setLessonModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={lessonSubmitting}>
-              {lessonSubmitting ? "Saving…" : editingLesson ? "Save changes" : "Create lesson"}
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Live class schedule / recording modal */}
-      <Modal open={liveModalOpen} onClose={() => setLiveModalOpen(false)} title="Live Session">
-        <form onSubmit={handleLiveSubmit} className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium text-text-secondary" htmlFor="edit-live-start">
-                Start time
-              </label>
-              <input
-                id="edit-live-start"
-                type="datetime-local"
-                value={editStart}
-                onChange={(e) => setEditStart(e.target.value)}
-                required
-                className="mt-1 w-full bg-surface border border-border rounded-md px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-text-secondary" htmlFor="edit-live-end">
-                End time
-              </label>
-              <input
-                id="edit-live-end"
-                type="datetime-local"
-                value={editEnd}
-                onChange={(e) => setEditEnd(e.target.value)}
-                required
-                className="mt-1 w-full bg-surface border border-border rounded-md px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-sm font-medium text-text-secondary">Host</label>
-            <div className="mt-1">
-              <Select value={editMentorId} onChange={setEditMentorId} options={mentorOptions} />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-sm font-medium text-text-secondary" htmlFor="edit-join-url">
-              Join URL
-            </label>
-            <input
-              id="edit-join-url"
-              type="url"
-              value={editJoinUrl}
-              onChange={(e) => setEditJoinUrl(e.target.value)}
-              className="mt-1 w-full bg-surface border border-border rounded-md px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
-            />
-          </div>
-
-          <div>
-            <label className="text-sm font-medium text-text-secondary">Status</label>
-            <div className="mt-1">
-              <Select
-                value={editStatus}
-                onChange={(v) => setEditStatus(v as LiveClassStatus)}
-                options={[
-                  { value: "SCHEDULED", label: "Scheduled" },
-                  { value: "LIVE", label: "Live now" },
-                  { value: "COMPLETED", label: "Completed" },
-                  { value: "CANCELLED", label: "Cancelled" },
-                ]}
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-sm font-medium text-text-secondary">Recording</label>
-            <p className="text-xs text-text-muted mt-1">
-              Upload the recorded class file — it uploads directly to secure storage and is only ever streamed
-              back through a protected, watermarked player, never a public link.
-            </p>
-            <div className="mt-2">
-              <input
-                type="file"
-                accept="video/*"
-                disabled={recordingUploading}
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleRecordingUpload(file);
-                }}
-                className="text-sm text-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-surface-secondary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-text-primary hover:file:bg-border-light"
-              />
-            </div>
-            {recordingUploading && (
-              <div className="mt-2">
-                <div className="h-1.5 rounded-full bg-surface-secondary overflow-hidden">
-                  <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${recordingUploadProgress}%` }} />
-                </div>
-                <p className="text-xs text-text-muted mt-1">Uploading… {recordingUploadProgress}%</p>
-              </div>
-            )}
-            {recordingUploadError && <p className="text-xs text-error mt-1">{recordingUploadError}</p>}
-            {recordingUploaded && !recordingUploading && <p className="text-xs text-success mt-1">Recording uploaded.</p>}
-          </div>
-
-          {liveError && <p className="text-sm text-error">{liveError}</p>}
-          <div className="flex justify-end gap-2 mt-2">
-            <Button variant="secondary" onClick={() => setLiveModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={liveSubmitting}>
-              {liveSubmitting ? "Saving…" : "Save changes"}
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
-      <LessonContentModal scope={contentScope} open={!!contentScope} onClose={() => setContentScope(null)} />
     </AdminLayout>
   );
 }

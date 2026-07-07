@@ -27,7 +27,6 @@ export const REDIS_KEYS = {
   revokedSession: (sessionId: string) => `revoked:session:${sessionId}`,
   authRateLimit: (ip: string) => `ratelimit:auth:${ip}`,
   otpRateLimit: (email: string) => `ratelimit:otp:${email.toLowerCase()}`,
-  zoomAccessToken: () => "zoom:access_token",
   zohoAccessToken: (userLiveAccountId: string) => `zoho:access_token:${userLiveAccountId}`,
   // zohoOAuthState removed — the Zoho connect state token is now a signed JWT (no Redis needed).
 };

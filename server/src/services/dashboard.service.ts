@@ -13,12 +13,12 @@ function withComputedLive<T extends { startTime: Date; status: string }>(liveCla
 export async function getStudentDashboard(userId: string) {
   const enrollments = await prisma.enrollment.findMany({
     where: { userId },
-    include: { cohort: { include: { course: { include: { modules: { include: { lessons: true } } } } } } },
+    include: { cohort: { include: { course: true, modules: { include: { lessons: true } } } } },
   });
 
   const courseSummaries = await Promise.all(
     enrollments.map(async (enrollment) => {
-      const lessons = enrollment.cohort.course.modules.flatMap((m) => m.lessons).sort((a, b) => a.order - b.order);
+      const lessons = enrollment.cohort.modules.flatMap((m) => m.lessons).sort((a, b) => a.order - b.order);
       const lessonIds = lessons.map((l) => l.id);
       const completedCount = lessonIds.length
         ? await prisma.lessonProgress.count({ where: { userId, lessonId: { in: lessonIds }, completed: true } })
@@ -51,12 +51,11 @@ export async function getStudentDashboard(userId: string) {
   );
 
   const cohortIds = enrollments.map((e) => e.cohortId);
-  const courseIds = Array.from(new Set(courseSummaries.map((c) => c.courseId)));
 
-  const upcomingLive = courseIds.length
+  const upcomingLive = cohortIds.length
     ? await prisma.lesson.findMany({
-        where: { type: "LIVE", module: { courseId: { in: courseIds } }, liveClass: { status: { not: "CANCELLED" } } },
-        include: { liveClass: liveClassSelect, module: { select: { courseId: true } } },
+        where: { type: "LIVE", module: { cohortId: { in: cohortIds } }, liveClass: { status: { not: "CANCELLED" } } },
+        include: { liveClass: liveClassSelect, module: { select: { cohortId: true } } },
         orderBy: { liveClass: { startTime: "asc" } },
         take: 20,
       })
@@ -65,7 +64,7 @@ export async function getStudentDashboard(userId: string) {
   const liveEvents = upcomingLive
     .filter((l) => l.liveClass)
     .map((l) => {
-      const course = courseSummaries.find((c) => c.courseId === l.module.courseId);
+      const course = courseSummaries.find((c) => c.cohortId === l.module.cohortId);
       return {
         lessonId: l.id,
         title: l.title,
@@ -169,20 +168,18 @@ export async function getManagerDashboard(userId: string) {
     : [];
   const cohortsWithMetrics = await withCohortMetrics(cohorts);
 
-  const courseIds = Array.from(new Set(cohorts.map((c) => c.course.id)));
-
-  const upcomingLive = courseIds.length
+  const upcomingLive = cohortIds.length
     ? await prisma.lesson.findMany({
-        where: { type: "LIVE", module: { courseId: { in: courseIds } }, liveClass: { status: { not: "CANCELLED" } } },
-        include: { liveClass: liveClassSelect, module: { select: { courseId: true } } },
+        where: { type: "LIVE", module: { cohortId: { in: cohortIds } }, liveClass: { status: { not: "CANCELLED" } } },
+        include: { liveClass: liveClassSelect, module: { select: { cohortId: true } } },
         take: 20,
       })
     : [];
   const liveEvents = upcomingLive
     .filter((l) => l.liveClass)
     .map((l) => {
-      const course = cohorts.find((c) => c.course.id === l.module.courseId);
-      return { lessonId: l.id, title: l.title, courseTitle: course?.course.title ?? "", liveClass: withComputedLive(l.liveClass!) };
+      const cohort = cohorts.find((c) => c.id === l.module.cohortId);
+      return { lessonId: l.id, title: l.title, courseTitle: cohort?.course.title ?? "", liveClass: withComputedLive(l.liveClass!) };
     })
     .filter((e) => e.liveClass.status !== "COMPLETED")
     .sort((a, b) => a.liveClass.startTime.getTime() - b.liveClass.startTime.getTime())

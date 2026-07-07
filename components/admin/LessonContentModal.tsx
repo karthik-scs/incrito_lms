@@ -63,6 +63,7 @@ function emptyQuestion(): DraftQuestion {
 function QuizzesPanel({ lessonId, courseId }: Scope) {
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [creating, setCreating] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [passingScore, setPassingScore] = useState("70");
   const [timeLimitMinutes, setTimeLimitMinutes] = useState("10");
@@ -88,6 +89,24 @@ function QuizzesPanel({ lessonId, courseId }: Scope) {
     setMaxAttempts("1");
     setQuestions([emptyQuestion()]);
     setError(null);
+    setEditingId(null);
+  }
+
+  async function handleEdit(a: Assessment) {
+    const res = await apiJson<{ id: string; title: string; passingScore: number; timeLimitMinutes: number; maxAttempts: number; questions: { text: string; type: QuestionType; marks: number; options: { text: string; isCorrect: boolean }[] }[] }>(`/api/assessments/${a.id}/admin`);
+    if (!res.ok) return;
+    const full = res.data;
+    setTitle(full.title);
+    setPassingScore(String(full.passingScore));
+    setTimeLimitMinutes(String(full.timeLimitMinutes));
+    setMaxAttempts(String(full.maxAttempts));
+    setQuestions(
+      full.questions.length > 0
+        ? full.questions.map((q) => ({ text: q.text, type: q.type, marks: q.marks, options: q.options.map((o) => ({ text: o.text, isCorrect: o.isCorrect })) }))
+        : [emptyQuestion()]
+    );
+    setError(null);
+    setEditingId(a.id);
   }
 
   function updateQuestion(index: number, patch: Partial<DraftQuestion>) {
@@ -114,14 +133,18 @@ function QuizzesPanel({ lessonId, courseId }: Scope) {
     );
   }
 
+  function validateQuestions(): string | null {
+    if (questions.some((q) => !q.text || q.options.filter((o) => o.text).length < 2 || !q.options.some((o) => o.isCorrect))) {
+      return "Every question needs text, at least 2 options, and one marked correct.";
+    }
+    return null;
+  }
+
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
     setError(null);
-
-    if (questions.some((q) => !q.text || q.options.filter((o) => o.text).length < 2 || !q.options.some((o) => o.isCorrect))) {
-      setError("Every question needs text, at least 2 options, and one marked correct.");
-      return;
-    }
+    const validationError = validateQuestions();
+    if (validationError) { setError(validationError); return; }
 
     setSubmitting(true);
     const result = await apiJson("/api/assessments", {
@@ -138,11 +161,32 @@ function QuizzesPanel({ lessonId, courseId }: Scope) {
       }),
     });
     setSubmitting(false);
-    if (!result.ok) {
-      setError(result.message);
-      return;
-    }
+    if (!result.ok) { setError(result.message); return; }
     setCreating(false);
+    resetForm();
+    await load();
+  }
+
+  async function handleUpdate(e: FormEvent) {
+    e.preventDefault();
+    if (!editingId) return;
+    setError(null);
+    const validationError = validateQuestions();
+    if (validationError) { setError(validationError); return; }
+
+    setSubmitting(true);
+    const result = await apiJson(`/api/assessments/${editingId}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        title,
+        passingScore: Number(passingScore),
+        timeLimitMinutes: Number(timeLimitMinutes),
+        maxAttempts: Number(maxAttempts),
+        questions: questions.map((q) => ({ ...q, options: q.options.filter((o) => o.text) })),
+      }),
+    });
+    setSubmitting(false);
+    if (!result.ok) { setError(result.message); return; }
     resetForm();
     await load();
   }
@@ -161,10 +205,10 @@ function QuizzesPanel({ lessonId, courseId }: Scope) {
     await load();
   }
 
-  if (creating) {
+  if (creating || editingId) {
     return (
-      <form onSubmit={handleCreate} className="flex flex-col gap-4">
-        <button type="button" onClick={() => setCreating(false)} className="flex items-center gap-1 text-sm text-text-secondary hover:text-text-primary self-start">
+      <form onSubmit={editingId ? handleUpdate : handleCreate} className="flex flex-col gap-4">
+        <button type="button" onClick={() => { setCreating(false); resetForm(); }} className="flex items-center gap-1 text-sm text-text-secondary hover:text-text-primary self-start">
           <ChevronLeft size={14} /> Back to quizzes
         </button>
 
@@ -263,7 +307,7 @@ function QuizzesPanel({ lessonId, courseId }: Scope) {
 
         {error && <p className="text-sm text-error">{error}</p>}
         <Button type="submit" disabled={submitting}>
-          {submitting ? "Creating…" : "Create quiz"}
+          {submitting ? (editingId ? "Saving…" : "Creating…") : (editingId ? "Save changes" : "Create quiz")}
         </Button>
       </form>
     );
@@ -285,6 +329,9 @@ function QuizzesPanel({ lessonId, courseId }: Scope) {
             <Button variant="secondary" onClick={() => togglePublish(a)} className="px-2.5 py-1.5 text-xs">
               {a.status === "PUBLISHED" ? "Unpublish" : "Publish"}
             </Button>
+            <button onClick={() => handleEdit(a)} aria-label="Edit quiz" className="text-text-muted hover:text-accent p-1.5">
+              <Pencil size={14} />
+            </button>
             <button onClick={() => handleDelete(a.id)} aria-label="Delete quiz" className="text-text-muted hover:text-error p-1.5">
               <Trash2 size={14} />
             </button>

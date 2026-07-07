@@ -250,7 +250,6 @@ model Course {
   createdBy          User                @relation("CourseCreatedBy", fields: [createdById], references: [id])
   category           Category?           @relation(fields: [categoryId], references: [id])
   tags               CourseTag[]
-  modules            Module[]
   cohorts            Cohort[]
   assessments        Assessment[]
   assignments        Assignment[]
@@ -266,20 +265,20 @@ model Course {
 
 model Module {
   id         String     @id @default(cuid())
-  courseId   String
+  cohortId   String
   title      String
   order      Int
   planAccess PlanAccess @default(BOTH)
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
 
-  course                 Course                    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  cohort                 Cohort                    @relation(fields: [cohortId], references: [id], onDelete: Cascade)
   lessons                Lesson[]
   assessments            Assessment[]
   assignments            Assignment[]
   courseCertificateLinks CourseCertificateModule[]
 
-  @@unique([courseId, order])
+  @@unique([cohortId, order])
 }
 
 enum LessonType {
@@ -287,6 +286,13 @@ enum LessonType {
   TEXT
   PDF
   LIVE
+}
+
+enum HlsStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
 }
 
 model Lesson {
@@ -307,6 +313,14 @@ model Lesson {
    * Only set when type is LIVE — links this curriculum slot to its scheduled/recorded session.
    */
   liveClassId     String?    @unique
+  /**
+   * AES-128 HLS encryption. Once `hlsStatus` is READY the player switches to the HLS manifest
+   * instead of the raw MP4 stream proxy — segments are pre-encrypted so the key server is the
+   * only access control point.
+   */
+  hlsManifestKey   String?   // S3 prefix: hls/{lessonId}/
+  hlsEncryptionKey String?   // base64-encoded 16-byte AES-128 key
+  hlsStatus        HlsStatus?
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
@@ -367,15 +381,16 @@ enum CohortStatus {
 }
 
 model Cohort {
-  id        String       @id @default(cuid())
-  courseId  String
-  name      String
-  status    CohortStatus @default(UPCOMING)
-  startDate DateTime
-  endDate   DateTime?
-  capacity  Int?
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  id         String       @id @default(cuid())
+  courseId   String
+  name       String
+  status     CohortStatus @default(UPCOMING)
+  unlockMode UnlockMode   @default(FREE)
+  startDate  DateTime
+  endDate    DateTime?
+  capacity   Int?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
 
   course Course @relation(fields: [courseId], references: [id])
 
@@ -384,6 +399,7 @@ model Cohort {
    */
   managers           CohortManagerAssignment[]
   mentors            CohortMentor[]
+  modules            Module[]
   enrollments        Enrollment[]
   liveClasses        LiveClass[]
   progress           Progress[]
@@ -485,24 +501,11 @@ model LiveClass {
    * (no in-app embedding for either, by explicit decision); this field only affects scheduling and
    * recording-retrieval logic, not the join UI itself.
    */
-  provider          LiveProvider    @default(ZOOM)
-  /**
-   * The specific connected account this meeting was scheduled under. Null means it used the
-   * legacy shared `ZoomAccount` pool (pre-personal-accounts rows, or a host with no personal
-   * account connected who fell back to the shared pool) rather than a host's own connected
-   * Zoom/Zoho account.
-   */
+  provider          LiveProvider    @default(ZOHO)
   userLiveAccountId String?
-  /**
-   * Which (legacy, shared) Zoom account this meeting was scheduled under — null for rows that
-   * used a host's own personal `UserLiveAccount` instead, or that are on Zoho.
-   */
-  zoomAccountId     String?
   title             String
-  zoomMeetingId     String?
-  zoomPasscode      String?
   /**
-   * Zoho's equivalent of `zoomMeetingId` — only set when `provider` is ZOHO.
+   * Zoho meeting ID — set when the session was created via the Zoho Meeting API.
    */
   zohoMeetingId     String?
   joinUrl           String?
@@ -512,21 +515,15 @@ model LiveClass {
    */
   hostStartUrl      String?
   /**
-   * Set once a recording is available for on-demand viewing. Two paths populate this: (1) Zoom's
-   * `recording.completed` webhook auto-downloads and stores it (unchanged, see
-   * zoomWebhook.service.ts), or (2) the host manually uploads a recording file through the app
-   * (required for Zoho, since there's no reliable automatic pull; also available as an override
-   * for Zoom). Either way this ends up as an S3 object key, never a permanent public URL — actual
-   * playback always goes through the signed-URL protection endpoint.
+   * Set once a recording is available for on-demand viewing. The host manually uploads the
+   * recording file through the app — it ends up as an S3 object key, never a permanent public URL.
+   * Actual playback always goes through the signed-URL protection endpoint.
    */
   recordingUrl      String?
   startTime         DateTime
   endTime           DateTime
   /**
-   * Real start/end times reported by Zoom's `meeting.started`/`meeting.ended` webhooks, distinct
-   * from the scheduled `startTime`/`endTime` above. There is deliberately no hard cutoff at the
-   * scheduled `endTime` — a session stays joinable for as long as Zoom (or the host, manually)
-   * says it's still LIVE, not until some pre-guessed end time passes.
+   * Real start/end times, distinct from the scheduled startTime/endTime above.
    */
   startedAt         DateTime?
   endedAt           DateTime?
@@ -536,41 +533,28 @@ model LiveClass {
 
   cohort          Cohort?          @relation(fields: [cohortId], references: [id])
   mentor          User             @relation("LiveClassMentor", fields: [mentorId], references: [id])
-  zoomAccount     ZoomAccount?     @relation(fields: [zoomAccountId], references: [id], onDelete: SetNull)
   userLiveAccount UserLiveAccount? @relation(fields: [userLiveAccountId], references: [id], onDelete: SetNull)
   attendances     Attendance[]
   lesson          Lesson?
 
   @@index([cohortId])
   @@index([mentorId])
-  @@index([zoomAccountId])
   @@index([userLiveAccountId])
 }
 
 enum LiveProvider {
-  ZOOM
   ZOHO
 }
 
 /**
- * One row per (user, provider) — a Mentor/Cohort Manager/Admin's own personally-connected Zoom
- * or Zoho account, used to schedule live classes under their own license rather than the shared
- * admin-managed `ZoomAccount` pool. A host can have at most one connected account per provider.
- * Both providers open in a new tab to start/join (no in-app embedding) — these credentials are
- * only ever used server-side, to call each provider's scheduling API.
+ * One row per user — a Mentor/Cohort Manager/Admin's own personally-connected Zoho account,
+ * used to schedule live classes under their own license. Opens in a new tab to start/join
+ * (no in-app embedding) — credentials are only ever used server-side to call Zoho's API.
  */
 model UserLiveAccount {
   id       String       @id @default(cuid())
   userId   String
   provider LiveProvider
-
-  /**
-   * Zoom Server-to-Server OAuth credentials — same shape as the admin-managed `ZoomAccount`.
-   */
-  zoomAccountId    String?
-  zoomClientId     String?
-  zoomClientSecret String?
-  zoomSecretToken  String?
 
   /**
    * Zoho OAuth — a self-client app registered once at the org level (env vars) issues these via
@@ -599,41 +583,6 @@ model UserLiveAccount {
   @@unique([userId, provider])
 }
 
-/**
- * One row per Zoom Server-to-Server OAuth app, managed from Admin Settings → "Live Class API".
- * Multiple rows exist specifically to work around a paid plan's concurrent-meeting limit — when
- * an account already has `concurrentLimit` meetings scheduled in an overlapping time window,
- * `zoom.ts#pickZoomAccount` automatically rotates to the next account with capacity instead of
- * letting the Zoom API call fail.
- */
-model ZoomAccount {
-  id              String   @id @default(cuid())
-  label           String
-  zoomAccountId   String
-  clientId        String
-  clientSecret    String
-  /**
-   * Webhook "Secret Token," used to verify the HMAC signature on incoming Zoom webhook events.
-   */
-  secretToken     String
-  /**
-   * A Meeting SDK app's key/secret (NOT the same as the Server-to-Server OAuth clientId/secret
-   * above — Zoom treats "Meeting SDK" and "Server-to-Server OAuth" as separate app types) —
-   * required only for real in-app meeting embedding via @zoom/meetingsdk. Left null, in-app join
-   * falls back to opening the Zoom join URL in a new tab.
-   */
-  sdkKey          String?
-  sdkSecret       String?
-  /**
-   * Zoom Business plan default: 2 concurrent meetings per account before rotating to the next.
-   */
-  concurrentLimit Int      @default(2)
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  liveClasses LiveClass[]
-}
 
 enum AttendanceStatus {
   PRESENT
@@ -1010,6 +959,7 @@ model NotificationPreference {
   enrollmentEmails    Boolean  @default(true)
   announcementEmails  Boolean  @default(true)
   certificateEmails   Boolean  @default(true)
+  liveClassEmails     Boolean  @default(true)
   productUpdateEmails Boolean  @default(false)
   updatedAt           DateTime @updatedAt
 

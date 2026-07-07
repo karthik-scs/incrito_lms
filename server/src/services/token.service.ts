@@ -65,6 +65,27 @@ export function verifyMfaPendingToken(token: string): string {
   return payload.sub;
 }
 
+/** 10-minute token authorising one user to stream one lesson's S3 content via the proxy endpoint.
+ *  The client IP is baked in so copying the URL to another machine yields a 401. */
+export function signStreamToken(lessonId: string, userId: string, clientIp: string): string {
+  return jwt.sign({ lessonId, userId, ip: clientIp, stream: true }, env.JWT_ACCESS_SECRET, { expiresIn: 10 * 60 });
+}
+
+export function verifyStreamToken(
+  token: string,
+  clientIp: string,
+): { lessonId: string; userId: string } {
+  const payload = jwt.verify(token, env.JWT_ACCESS_SECRET) as {
+    lessonId: string;
+    userId: string;
+    ip?: string;
+    stream?: boolean;
+  };
+  if (!payload.stream) throw new Error("Not a stream token");
+  if (payload.ip && payload.ip !== clientIp) throw new Error("IP mismatch");
+  return { lessonId: payload.lessonId, userId: payload.userId };
+}
+
 export function unpackRefreshCookie(cookieValue: string): { sessionId: string; rawToken: string } | null {
   const separatorIndex = cookieValue.indexOf(".");
   if (separatorIndex === -1) return null;

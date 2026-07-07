@@ -1,7 +1,6 @@
 import { Router } from "express";
 import { asyncHandler } from "../utils/asyncHandler";
 import { authenticate } from "../middleware/authenticate";
-import { authorize } from "../middleware/authorize";
 import { validate } from "../middleware/validate";
 import {
   createLessonSchema,
@@ -20,29 +19,25 @@ router.get("/:id", asyncHandler(lessonController.get));
 router.post(
   "/",
   authenticate,
-  authorize("course:write"),
   validate(createLessonSchema),
   asyncHandler(lessonController.create)
 );
 router.patch(
   "/reorder",
   authenticate,
-  authorize("course:write"),
   validate(reorderLessonsSchema),
   asyncHandler(lessonController.reorder)
 );
 router.patch(
   "/:id",
   authenticate,
-  authorize("course:write"),
   validate(updateLessonSchema),
   asyncHandler(lessonController.update)
 );
-router.delete("/:id", authenticate, authorize("course:write"), asyncHandler(lessonController.remove));
+router.delete("/:id", authenticate, asyncHandler(lessonController.remove));
 router.patch(
   "/:id/live-class",
   authenticate,
-  authorize("course:write"),
   validate(updateLiveClassSchema),
   asyncHandler(lessonController.updateLiveClass)
 );
@@ -63,6 +58,10 @@ router.post(
 );
 router.get("/:id/live-class/recording-url", authenticate, asyncHandler(lessonController.recordingUrl));
 router.get("/:id/content-url", authenticate, asyncHandler(lessonController.contentUrl));
+// Token-authenticated routes — no session middleware needed; the IP-bound stream token carries identity.
+router.get("/:id/stream", asyncHandler(lessonController.streamContent));
+router.get("/:id/hls-manifest", asyncHandler(lessonController.hlsManifest));
+router.get("/:id/hls-key", asyncHandler(lessonController.hlsKey));
 router.post("/:id/complete", authenticate, asyncHandler(lessonController.complete));
 
 export default router;

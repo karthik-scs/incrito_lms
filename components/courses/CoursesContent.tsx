@@ -33,7 +33,7 @@ type Course = {
   mentor: { id: string; firstName: string; lastName: string };
   category: Category | null;
   tags: { tag: Tag }[];
-  _count: { modules: number };
+  _count: { cohorts: number };
 };
 
 function slugify(value: string) {
@@ -80,7 +80,7 @@ export function CoursesContent() {
     setLoading(true);
     setError(null);
     const requests: Promise<unknown>[] = [
-      apiJson<Course[]>("/api/courses", { skipAuth: true }),
+      apiJson<Course[]>("/api/courses"),
       apiJson<Category[]>("/api/categories", { skipAuth: true }),
       apiJson<Tag[]>("/api/tags", { skipAuth: true }),
       apiJson<UserOption[]>("/api/users"),
@@ -232,7 +232,7 @@ export function CoursesContent() {
                 <span>{course.mentor.firstName} {course.mentor.lastName}</span>
                 <span className="flex items-center gap-1">
                   <Layers size={12} />
-                  {course._count.modules} modules
+                  {course._count.cohorts} cohort{course._count.cohorts !== 1 ? "s" : ""}
                 </span>
               </div>
 

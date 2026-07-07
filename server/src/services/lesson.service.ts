@@ -13,7 +13,6 @@ type LiveClassInput = {
   startTime: Date;
   endTime: Date;
   mentorId: string;
-  /** The host's own connected Zoom/Zoho account, if they picked one — omitted falls back to the shared Zoom pool. */
   userLiveAccountId?: string;
 };
 
@@ -31,11 +30,8 @@ type LessonInput = {
 };
 
 /**
- * Joinable from 10 minutes before the scheduled start onward — deliberately with no cutoff at
- * the scheduled `endTime`. Zoom's `meeting.started`/`meeting.ended` webhooks (see
- * zoomWebhook.service.ts) are what actually flip `status` to `LIVE`/`COMPLETED` once real
- * meeting activity happens; this is just the "close enough to start, allow joining a bit early"
- * window for a session that's still `SCHEDULED` and hasn't reported as started yet.
+ * Joinable from 10 minutes before the scheduled start onward — allows joining a bit early while
+ * the session is still SCHEDULED. Status flips to LIVE/COMPLETED manually or via admin action.
  */
 export function isLiveNow(liveClass: { startTime: Date; status: string }) {
   if (liveClass.status === "LIVE") return true;
@@ -71,9 +67,6 @@ async function nextOrder(moduleId: string) {
 type ScheduledMeeting = {
   provider: "ZOHO";
   userLiveAccountId: string | null;
-  zoomMeetingId: null;
-  zoomAccountId: null;
-  zoomPasscode: null;
   zohoMeetingId: string | null;
   joinUrl: string | null;
   hostStartUrl: string | null;
@@ -89,28 +82,20 @@ async function scheduleLiveMeeting(input: LiveClassInput, topic: string): Promis
     if (!account || account.userId !== input.mentorId || !account.isActive) {
       throw new AppError("That connected account doesn't belong to this host or is no longer active", 422);
     }
-    if (account.provider === "ZOHO") {
-      const meeting = await createZohoMeeting(account.id, { topic, startTime: input.startTime, endTime: input.endTime });
-      return {
-        provider: "ZOHO",
-        userLiveAccountId: account.id,
-        zoomMeetingId: null,
-        zoomAccountId: null,
-        zoomPasscode: null,
-        zohoMeetingId: meeting.zohoMeetingId,
-        joinUrl: meeting.joinUrl,
-        hostStartUrl: meeting.hostStartUrl,
-      };
-    }
+    const meeting = await createZohoMeeting(account.id, { topic, startTime: input.startTime, endTime: input.endTime });
+    return {
+      provider: "ZOHO",
+      userLiveAccountId: account.id,
+      zohoMeetingId: meeting.zohoMeetingId,
+      joinUrl: meeting.joinUrl,
+      hostStartUrl: meeting.hostStartUrl,
+    };
   }
 
   // No Zoho account selected — create the session without a meeting URL; mentor can add one later.
   return {
     provider: "ZOHO",
     userLiveAccountId: null,
-    zoomMeetingId: null,
-    zoomAccountId: null,
-    zoomPasscode: null,
     zohoMeetingId: null,
     joinUrl: null,
     hostStartUrl: null,
@@ -118,7 +103,7 @@ async function scheduleLiveMeeting(input: LiveClassInput, topic: string): Promis
 }
 
 export async function createLesson(data: LessonInput) {
-  const module = await prisma.module.findUnique({ where: { id: data.moduleId }, include: { course: true } });
+  const module = await prisma.module.findUnique({ where: { id: data.moduleId } });
   if (!module) {
     throw new AppError("Module not found", 404);
   }
@@ -138,11 +123,8 @@ export async function createLesson(data: LessonInput) {
       throw new AppError("The host must be an Admin, Mentor, or Cohort Manager", 422);
     }
 
-    // Auto-generate the meeting — admins/mentors/cohort managers schedule the session, they don't
-    // paste a link. If the host picked one of their own connected accounts, it's scheduled there
-    // (Zoom or Zoho); otherwise this falls back to the shared admin-managed Zoom pool, which
-    // rotates across whichever account has spare concurrent-meeting capacity for this time window
-    // (see zoom.ts#pickZoomAccount).
+    // Auto-generate the meeting via Zoho if the host has a connected account; otherwise the
+    // session is created without a URL and the mentor can paste one in later.
     const scheduled = await scheduleLiveMeeting(data.liveClass, data.title);
 
     const liveClass = await prisma.liveClass.create({
@@ -153,9 +135,6 @@ export async function createLesson(data: LessonInput) {
         endTime: data.liveClass.endTime,
         provider: scheduled.provider,
         userLiveAccountId: scheduled.userLiveAccountId,
-        zoomMeetingId: scheduled.zoomMeetingId,
-        zoomAccountId: scheduled.zoomAccountId,
-        zoomPasscode: scheduled.zoomPasscode,
         zohoMeetingId: scheduled.zohoMeetingId,
         joinUrl: scheduled.joinUrl,
         hostStartUrl: scheduled.hostStartUrl,
@@ -220,11 +199,22 @@ export async function updateLesson(
     const oldKey = keyFromUrl(existing.thumbnailUrl);
     if (oldKey) await deleteObject(oldKey);
   }
-  if (data.contentUrl && data.contentUrl !== existing.contentUrl) {
+  const contentUrlChanged = data.contentUrl && data.contentUrl !== existing.contentUrl;
+  if (contentUrlChanged) {
     const oldKey = keyFromUrl(existing.contentUrl);
     if (oldKey) await deleteObject(oldKey);
   }
-  const lesson = await prisma.lesson.update({ where: { id }, data, include: lessonInclude });
+  const lesson = await prisma.lesson.update({
+    where: { id },
+    // Reset HLS state when video is replaced so stale encrypted segments are not served.
+    data: contentUrlChanged ? { ...data, hlsStatus: "PENDING", hlsManifestKey: null, hlsEncryptionKey: null } : data,
+    include: lessonInclude,
+  });
+  // Kick off async HLS packaging when a VIDEO lesson gets a new file.
+  if (contentUrlChanged && existing.type === "VIDEO") {
+    const { triggerHlsPackaging } = await import("./hls.service");
+    triggerHlsPackaging(id);
+  }
   return withComputedStatus(lesson);
 }
 
@@ -256,8 +246,8 @@ export async function reorderLessons(moduleId: string, orderedIds: string[]) {
 }
 
 /**
- * Shared by the manual "Schedule" modal PATCH and the Zoom webhook handler — both can flip a
- * live class's status, and both need to fire the same cohort notifications when they do.
+ * Shared by the manual "Schedule" modal PATCH and any status-transition trigger — fires cohort
+ * notifications when the live class status changes.
  */
 export async function notifyLiveClassTransition(
   lessonId: string,
@@ -265,37 +255,33 @@ export async function notifyLiveClassTransition(
   liveClass: { id: string; title: string; status: string; recordingUrl: string | null }
 ) {
   const lesson = await getLesson(lessonId);
-  const module = await prisma.module.findUnique({ where: { id: lesson.moduleId }, include: { course: { select: { slug: true } } } });
+  const module = await prisma.module.findUnique({
+    where: { id: lesson.moduleId },
+    include: { cohort: { select: { id: true, course: { select: { slug: true } } } } },
+  });
   if (!module) return;
 
-  const cohorts = await prisma.cohort.findMany({ where: { courseId: module.courseId }, select: { id: true } });
+  const cohortId = module.cohortId;
+  const courseSlug = module.cohort.course.slug;
 
   if (before.status !== "LIVE" && liveClass.status === "LIVE") {
-    await Promise.all(
-      cohorts.map((c) =>
-        notifyCohort(
-          c.id,
-          "CLASS_REMINDER",
-          "Live class starting now",
-          `"${liveClass.title}" is live now — join from your course roadmap.`,
-          { lessonId, liveClassId: liveClass.id, courseSlug: module.course.slug, action: "join" }
-        ).catch(() => null)
-      )
-    );
+    await notifyCohort(
+      cohortId,
+      "CLASS_REMINDER",
+      "Live class starting now",
+      `"${liveClass.title}" is live now — join from your course roadmap.`,
+      { lessonId, liveClassId: liveClass.id, courseSlug, action: "join" }
+    ).catch(() => null);
   }
 
   if (before.status !== "COMPLETED" && liveClass.status === "COMPLETED" && liveClass.recordingUrl) {
-    await Promise.all(
-      cohorts.map((c) =>
-        notifyCohort(
-          c.id,
-          "CLASS_REMINDER",
-          "Recording available",
-          `The recording for "${liveClass.title}" is now available to watch.`,
-          { lessonId, liveClassId: liveClass.id, courseSlug: module.course.slug, action: "watch" }
-        ).catch(() => null)
-      )
-    );
+    await notifyCohort(
+      cohortId,
+      "CLASS_REMINDER",
+      "Recording available",
+      `The recording for "${liveClass.title}" is now available to watch.`,
+      { lessonId, liveClassId: liveClass.id, courseSlug, action: "watch" }
+    ).catch(() => null);
   }
 }
 
@@ -366,15 +352,15 @@ async function buildRecordingKey(
 
   const module = await prisma.module.findUnique({
     where: { id: lesson.moduleId },
-    include: { course: { include: { cohorts: { take: 1, orderBy: { startDate: "desc" } } } } },
+    include: { cohort: { select: { name: true } } },
   });
 
   let cohortName = "general";
   if (liveClass.cohortId) {
     const cohort = await prisma.cohort.findUnique({ where: { id: liveClass.cohortId }, select: { name: true } });
     if (cohort) cohortName = cohort.name;
-  } else if (module?.course?.cohorts[0]?.name) {
-    cohortName = module.course.cohorts[0].name;
+  } else if (module?.cohort?.name) {
+    cohortName = module.cohort.name;
   }
 
   const modulePart = module?.title ? slug(module.title) : "module";
@@ -383,7 +369,7 @@ async function buildRecordingKey(
   return `recordings/${slug(cohortName)}/${modulePart}/${lessonPart}_${dateStr}`;
 }
 
-/** Step 2: called once the browser's direct S3 upload finishes — records the S3 key, marks the session COMPLETED (a recording existing implies it's over), and notifies the cohort, same as the automatic Zoom webhook path does. */
+/** Step 2: called once the browser's direct S3 upload finishes — records the S3 key, marks the session COMPLETED, and notifies the cohort. */
 export async function finalizeRecordingUpload(lessonId: string, userId: string, key: string) {
   const { liveClass } = await assertCanManageRecording(lessonId, userId);
   const before = { status: liveClass.status };
@@ -407,7 +393,7 @@ const RECORDING_STAFF_ROLES = ["Admin", "Mentor", "Cohort Manager"];
 export async function getRecordingSignedUrl(lessonId: string, userId: string) {
   const lesson = await prisma.lesson.findUnique({
     where: { id: lessonId },
-    include: { module: { include: { course: true } }, liveClass: true },
+    include: { module: true, liveClass: true },
   });
   if (!lesson?.liveClass?.recordingUrl) {
     throw new AppError("No recording is available for this lesson", 404);
@@ -418,7 +404,7 @@ export async function getRecordingSignedUrl(lessonId: string, userId: string) {
 
   if (!isStaff) {
     const enrollment = await prisma.enrollment.findFirst({
-      where: { userId, cohort: { courseId: lesson.module.courseId } },
+      where: { userId, cohortId: lesson.module.cohortId },
     });
     if (!enrollment) {
       throw new AppError("You don't have access to this recording", 403);
@@ -446,7 +432,7 @@ export async function getRecordingSignedUrl(lessonId: string, userId: string) {
 export async function getContentSignedUrl(lessonId: string, userId: string) {
   const lesson = await prisma.lesson.findUnique({
     where: { id: lessonId },
-    include: { module: { include: { course: true } } },
+    include: { module: true },
   });
   if (!lesson?.contentUrl) {
     throw new AppError("No video content is available for this lesson", 404);
@@ -457,12 +443,14 @@ export async function getContentSignedUrl(lessonId: string, userId: string) {
 
   if (!isStaff) {
     const enrollment = await prisma.enrollment.findFirst({
-      where: { userId, cohort: { courseId: lesson.module.courseId } },
+      where: { userId, cohortId: lesson.module.cohortId },
     });
     if (!enrollment) {
       throw new AppError("You don't have access to this lesson", 403);
     }
-    const isLockedFor = (planAccess: string) => planAccess !== "BOTH" && planAccess !== enrollment.plan;
+    const PLAN_RANK: Record<string, number> = { ICAP: 1, INTENSIVE_PRO: 2 };
+    const userRank = PLAN_RANK[enrollment.plan] ?? 0;
+    const isLockedFor = (pa: string) => pa !== "BOTH" && (PLAN_RANK[pa] ?? 0) > userRank;
     if (isLockedFor(lesson.module.planAccess) || isLockedFor(lesson.planAccess)) {
       throw new AppError("This lesson is part of the Intensive Pro plan", 403);
     }
@@ -475,4 +463,81 @@ export async function getContentSignedUrl(lessonId: string, userId: string) {
     throw new AppError("This lesson's video isn't an uploaded file", 422);
   }
   return getPresignedGetUrl(key);
+}
+
+/**
+ * Returns a short-lived server-signed stream token for the lesson's video content.
+ * The token is used by GET /api/lessons/:id/stream to proxy the S3 object — the S3 URL
+ * is never sent to the browser, so students cannot extract it via DevTools.
+ */
+/** Validates access then returns the delivery URL and type for the lesson video. */
+export async function getContentUrl(
+  lessonId: string,
+  userId: string,
+  clientIp: string,
+): Promise<{ url: string; type: "hls" | "mp4"; hlsProcessing?: boolean }> {
+  const lesson = await prisma.lesson.findUnique({ where: { id: lessonId }, include: { module: true } });
+  if (!lesson?.contentUrl) throw new AppError("No video content for this lesson", 404);
+
+  const user = await prisma.user.findUnique({ where: { id: userId }, include: { role: true } });
+  const isStaff = RECORDING_STAFF_ROLES.includes(user?.role.name ?? "");
+
+  if (!isStaff) {
+    const enrollment = await prisma.enrollment.findFirst({ where: { userId, cohortId: lesson.module.cohortId } });
+    if (!enrollment) throw new AppError("You don't have access to this lesson", 403);
+    const PLAN_RANK: Record<string, number> = { ICAP: 1, INTENSIVE_PRO: 2 };
+    const userRank = PLAN_RANK[enrollment.plan] ?? 0;
+    const isLockedFor = (pa: string) => pa !== "BOTH" && (PLAN_RANK[pa] ?? 0) > userRank;
+    if (isLockedFor(lesson.module.planAccess) || isLockedFor(lesson.planAccess)) {
+      throw new AppError("This lesson requires the Intensive Pro plan", 403);
+    }
+  }
+
+  const { signStreamToken } = await import("./token.service");
+  const token = signStreamToken(lessonId, userId, clientIp);
+
+  // HLS is ready — serve the encrypted manifest.
+  if (lesson.hlsStatus === "READY" && lesson.hlsManifestKey) {
+    return {
+      url: `/api/lessons/${lessonId}/hls-manifest?t=${encodeURIComponent(token)}`,
+      type: "hls",
+    };
+  }
+
+  // HLS is being packaged — let the player know while falling back to the raw stream proxy.
+  return {
+    url: `/api/lessons/${lessonId}/stream?t=${encodeURIComponent(token)}`,
+    type: "mp4",
+    hlsProcessing: lesson.hlsStatus === "PROCESSING" || lesson.hlsStatus === "PENDING",
+  };
+}
+
+/**
+ * Validates the stream token and proxies the S3 object to the response with full Range support.
+ * Called by GET /api/lessons/:id/stream?t=TOKEN (no auth middleware — token carries identity).
+ */
+export async function streamLessonContent(
+  lessonId: string,
+  token: string,
+  rangeHeader: string | undefined,
+  clientIp: string,
+  res: import("express").Response,
+): Promise<void> {
+  const { verifyStreamToken } = await import("./token.service");
+  let payload: { lessonId: string; userId: string };
+  try {
+    payload = verifyStreamToken(token, clientIp);
+  } catch {
+    throw new AppError("Invalid or expired stream token", 401);
+  }
+  if (payload.lessonId !== lessonId) throw new AppError("Token does not match this lesson", 401);
+
+  const lesson = await prisma.lesson.findUnique({ where: { id: lessonId } });
+  if (!lesson?.contentUrl) throw new AppError("No video content for this lesson", 404);
+
+  const key = lesson.contentUrl.split("/api/files/")[1];
+  if (!key) throw new AppError("This lesson's video isn't an uploaded file", 422);
+
+  const { proxyS3Stream } = await import("../lib/s3");
+  await proxyS3Stream(key, rangeHeader, res);
 }

@@ -42,6 +42,14 @@ export function ProfileSettingsTab() {
     if (!file) return;
 
     setAvatarError(null);
+
+    const MAX_SIZE_MB = 5;
+    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+      setAvatarError(`File is too large. Maximum size is ${MAX_SIZE_MB}MB.`);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
     const localPreviewUrl = URL.createObjectURL(file);
     setAvatarPreview(localPreviewUrl);
 
@@ -122,7 +130,7 @@ export function ProfileSettingsTab() {
         </div>
         <div>
           <p className="text-sm font-medium text-text-primary">Profile photo</p>
-          <p className="text-xs text-text-secondary mt-0.5">PNG, JPEG or WEBP, up to 2MB.</p>
+          <p className="text-xs text-text-secondary mt-0.5">PNG, JPEG or WEBP, up to 5MB.</p>
           {avatarUploading && <p className="text-xs text-accent mt-1">Uploading…</p>}
           {avatarError && <p className="text-xs text-error mt-1">{avatarError}</p>}
         </div>

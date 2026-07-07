@@ -30,6 +30,7 @@ export const updateAssessmentSchema = z.object({
   timeLimitMinutes: z.number().int().positive().optional(),
   maxAttempts: z.number().int().positive().optional(),
   status: z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]).optional(),
+  questions: z.array(questionSchema).min(1).optional(),
 });
 
 export const submitAttemptSchema = z.object({

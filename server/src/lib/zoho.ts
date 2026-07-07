@@ -5,12 +5,11 @@ import { AppError } from "../utils/AppError";
 import type { UserLiveAccount } from "../../../app/generated/prisma/client";
 
 /**
- * Per-user Zoho Meeting OAuth integration. Unlike Zoom's admin-managed shared `ZoomAccount` pool,
- * each Mentor/Cohort Manager/Admin connects their *own* personal Zoho Workplace account via the
- * standard OAuth authorization-code flow (one org-level self-client registered once via
- * ZOHO_CLIENT_ID/ZOHO_CLIENT_SECRET; each user does their own one-time consent). Only the
- * resulting refresh token is stored, on that user's `UserLiveAccount` row — access tokens are
- * always re-derived and cached in Redis, same pattern as `zoom.ts`.
+ * Per-user Zoho Meeting OAuth integration — each Mentor/Cohort Manager/Admin connects their own
+ * personal Zoho Workplace account via the standard OAuth authorization-code flow (one org-level
+ * self-client registered once via ZOHO_CLIENT_ID/ZOHO_CLIENT_SECRET; each user does their own
+ * one-time consent). Only the resulting refresh token is stored on `UserLiveAccount` — access
+ * tokens are always re-derived and cached in Redis.
  *
  * Verified live end-to-end against a real connected account (not just docs) — every detail below
  * was confirmed by actually scheduling a real meeting, not assumed from Zoho's own thin/outdated

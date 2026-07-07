@@ -9,6 +9,7 @@ type NotificationPreferences = {
   enrollmentEmails: boolean;
   announcementEmails: boolean;
   certificateEmails: boolean;
+  liveClassEmails: boolean;
   productUpdateEmails: boolean;
 };
 
@@ -17,6 +18,7 @@ const FIELDS: { key: keyof NotificationPreferences; label: string; description: 
   { key: "enrollmentEmails", label: "Enrollment updates", description: "When a student is enrolled or unenrolled from a cohort." },
   { key: "announcementEmails", label: "Announcements", description: "When a new announcement is published." },
   { key: "certificateEmails", label: "Certificate issued", description: "When a certificate is issued to a student." },
+  { key: "liveClassEmails", label: "Live class reminders", description: "When a live class is scheduled or about to start." },
   { key: "productUpdateEmails", label: "Product updates", description: "Occasional news about new incrito features." },
 ];
 

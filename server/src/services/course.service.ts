@@ -6,7 +6,7 @@ const courseInclude = {
   mentor: { select: { id: true, firstName: true, lastName: true } },
   category: true,
   tags: { include: { tag: true } },
-  _count: { select: { modules: true } },
+  _count: { select: { cohorts: true } },
 } as const;
 
 export async function listCourses(filter: {
@@ -52,21 +52,7 @@ export async function listCourses(filter: {
 export async function getCourseBySlug(slug: string) {
   const course = await prisma.course.findUnique({
     where: { slug },
-    include: {
-      ...courseInclude,
-      modules: {
-        include: {
-          lessons: {
-            include: {
-              liveClass: { include: { mentor: { select: { id: true, firstName: true, lastName: true } } } },
-              resources: true,
-            },
-            orderBy: { order: "asc" },
-          },
-        },
-        orderBy: { order: "asc" },
-      },
-    },
+    include: courseInclude,
   });
   if (!course) {
     throw new AppError("Course not found", 404);

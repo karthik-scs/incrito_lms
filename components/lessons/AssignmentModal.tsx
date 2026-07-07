@@ -116,17 +116,14 @@ export function AssignmentModal({
                       <p className="text-sm text-text-primary mt-0.5 whitespace-pre-wrap">{submission.feedback}</p>
                     </div>
                   )}
-                  <Button variant="secondary" onClick={() => setEditing(true)} className="mt-3 px-3 py-1.5 text-xs">
-                    Resubmit
-                  </Button>
                 </div>
               ) : (
-                <p className="text-sm text-text-muted">Waiting for your mentor's feedback.</p>
-              )}
-              {submission.status !== "GRADED" && (
-                <Button variant="secondary" onClick={() => setEditing(true)} className="self-start px-3 py-1.5 text-xs">
-                  Edit submission
-                </Button>
+                <div className="flex flex-col gap-2 mt-1">
+                  <p className="text-sm text-text-muted">Waiting for your mentor's feedback.</p>
+                  <Button variant="secondary" onClick={() => setEditing(true)} className="self-start px-3 py-1.5 text-xs">
+                    Edit submission
+                  </Button>
+                </div>
               )}
             </div>
           )}

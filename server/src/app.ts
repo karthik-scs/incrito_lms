@@ -8,6 +8,8 @@ import { requestLogger } from "./middleware/requestLogger";
 
 export function createApp() {
   const app = express();
+  // Trust the first proxy hop so req.ip reflects the real client IP when behind Nginx/load balancer.
+  app.set("trust proxy", 1);
 
   app.use(requestLogger);
   app.use(

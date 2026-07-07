@@ -38,7 +38,7 @@ export async function deleteResource(id: string) {
 export async function getResourceSignedUrl(resourceId: string, userId: string) {
   const resource = await prisma.resource.findUnique({
     where: { id: resourceId },
-    include: { lesson: { include: { module: { include: { course: true } } } } },
+    include: { lesson: { include: { module: true } } },
   });
   if (!resource) {
     throw new AppError("Resource not found", 404);
@@ -50,7 +50,7 @@ export async function getResourceSignedUrl(resourceId: string, userId: string) {
   if (!isStaff) {
     const { lesson } = resource;
     const enrollment = await prisma.enrollment.findFirst({
-      where: { userId, cohort: { courseId: lesson.module.courseId } },
+      where: { userId, cohortId: lesson.module.cohortId },
     });
     if (!enrollment) {
       throw new AppError("You don't have access to this resource", 403);

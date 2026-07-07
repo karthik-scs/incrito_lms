@@ -15,7 +15,7 @@ const RESOURCE_STAFF_ROLES = ["Admin", "Mentor", "Cohort Manager"];
 export async function getWatermarkedPdf(resourceId: string, userId: string): Promise<Buffer> {
   const resource = await prisma.resource.findUnique({
     where: { id: resourceId },
-    include: { lesson: { include: { module: { include: { course: true } } } } },
+    include: { lesson: { include: { module: true } } },
   });
   if (!resource) throw new AppError("Resource not found", 404);
   if (resource.fileType !== "PDF") throw new AppError("This resource is not a PDF", 422);
@@ -31,7 +31,7 @@ export async function getWatermarkedPdf(resourceId: string, userId: string): Pro
   if (!isStaff) {
     const { lesson } = resource;
     const enrollment = await prisma.enrollment.findFirst({
-      where: { userId, cohort: { courseId: lesson.module.courseId } },
+      where: { userId, cohortId: lesson.module.cohortId },
     });
     if (!enrollment) throw new AppError("You don't have access to this resource", 403);
 

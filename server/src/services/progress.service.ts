@@ -8,12 +8,14 @@ import { isLiveNow } from "./lesson.service";
  * leaderboard points, and certificate eligibility are all scoped to what ICAP actually unlocks,
  * not penalized by Intensive-Pro-only content they were never going to see.
  */
-async function getCourseLessonIds(courseId: string, plan?: string) {
+async function getCohortLessonIds(cohortId: string, plan?: string) {
   const modules = await prisma.module.findMany({
-    where: { courseId },
+    where: { cohortId },
     include: { lessons: { select: { id: true, planAccess: true } } },
   });
-  const isAccessible = (planAccess: string) => !plan || planAccess === "BOTH" || planAccess === plan;
+  const PLAN_RANK_LOCAL: Record<string, number> = { ICAP: 1, INTENSIVE_PRO: 2 };
+  const rank = plan ? (PLAN_RANK_LOCAL[plan] ?? 0) : 99;
+  const isAccessible = (planAccess: string) => planAccess === "BOTH" || (PLAN_RANK_LOCAL[planAccess] ?? 0) <= rank;
   return modules.flatMap((m) => (isAccessible(m.planAccess) ? m.lessons.filter((l) => isAccessible(l.planAccess)).map((l) => l.id) : []));
 }
 
@@ -58,7 +60,7 @@ async function recomputeProgress(userId: string, cohortId: string) {
   if (!cohort) return;
 
   const enrollment = await prisma.enrollment.findUnique({ where: { userId_cohortId: { userId, cohortId } } });
-  const lessonIds = await getCourseLessonIds(cohort.courseId, enrollment?.plan ?? "ICAP");
+  const lessonIds = await getCohortLessonIds(cohortId, enrollment?.plan ?? "ICAP");
   const completedCount = lessonIds.length
     ? await prisma.lessonProgress.count({ where: { userId, lessonId: { in: lessonIds }, completed: true } })
     : 0;
@@ -96,11 +98,14 @@ export async function markLessonComplete(userId: string, lessonId: string) {
     throw new AppError("Lesson not found", 404);
   }
 
+  const cohortId = lesson.module.cohortId;
   const enrollment = await prisma.enrollment.findFirst({
-    where: { userId, cohort: { courseId: lesson.module.courseId } },
+    where: { userId, cohortId },
   });
+  const PLAN_RANK_ML: Record<string, number> = { ICAP: 1, INTENSIVE_PRO: 2 };
   const userPlan = enrollment?.plan ?? "ICAP";
-  const isLockedByPlan = (planAccess: string) => planAccess !== "BOTH" && planAccess !== userPlan;
+  const userRank = PLAN_RANK_ML[userPlan] ?? 0;
+  const isLockedByPlan = (planAccess: string) => planAccess !== "BOTH" && (PLAN_RANK_ML[planAccess] ?? 0) > userRank;
   if (isLockedByPlan(lesson.module.planAccess) || isLockedByPlan(lesson.planAccess)) {
     throw new AppError("This lesson is part of the Intensive Pro plan", 403);
   }
@@ -111,10 +116,7 @@ export async function markLessonComplete(userId: string, lessonId: string) {
     create: { userId, lessonId, completed: true, completedAt: new Date() },
   });
 
-  const enrollments = await prisma.enrollment.findMany({
-    where: { userId, cohort: { courseId: lesson.module.courseId } },
-  });
-  await Promise.all(enrollments.map((e) => recomputeProgress(userId, e.cohortId)));
+  await recomputeProgress(userId, cohortId);
 
   return { completed: true };
 }
@@ -123,15 +125,17 @@ export async function getMyCourses(userId: string) {
   const enrollments = await prisma.enrollment.findMany({
     where: { userId },
     include: {
-      cohort: { include: { course: { include: { modules: { include: { lessons: true } } } } } },
+      cohort: { include: { course: true, modules: { include: { lessons: true } } } },
     },
   });
 
   const results = await Promise.all(
     enrollments.map(async (enrollment) => {
       const plan = enrollment.plan;
-      const isAccessible = (planAccess: string) => planAccess === "BOTH" || planAccess === plan;
-      const lessons = enrollment.cohort.course.modules
+      const PLAN_RANK_MC: Record<string, number> = { ICAP: 1, INTENSIVE_PRO: 2 };
+      const planRank = PLAN_RANK_MC[plan] ?? 0;
+      const isAccessible = (planAccess: string) => planAccess === "BOTH" || (PLAN_RANK_MC[planAccess] ?? 0) <= planRank;
+      const lessons = enrollment.cohort.modules
         .filter((m) => isAccessible(m.planAccess))
         .flatMap((m) => m.lessons.filter((l) => isAccessible(l.planAccess)))
         .sort((a, b) => a.order - b.order);
@@ -168,7 +172,8 @@ export async function getMyCourses(userId: string) {
 }
 
 export async function getRecentActivity(userId: string, courseId: string) {
-  const lessonIds = await getCourseLessonIds(courseId);
+  const enrollment = await prisma.enrollment.findFirst({ where: { userId, cohort: { courseId } } });
+  const lessonIds = enrollment ? await getCohortLessonIds(enrollment.cohortId) : [];
 
   const completions = lessonIds.length
     ? await prisma.lessonProgress.findMany({
@@ -207,21 +212,7 @@ const STAFF_ROLES = ["Admin", "Mentor", "Cohort Manager"];
 export async function getCourseRoadmapForUser(userId: string, courseSlug: string, roleName?: string) {
   const course = await prisma.course.findUnique({
     where: { slug: courseSlug },
-    include: {
-      mentor: { select: { id: true, firstName: true, lastName: true } },
-      modules: {
-        orderBy: { order: "asc" },
-        include: {
-          lessons: {
-            orderBy: { order: "asc" },
-            include: {
-              liveClass: { include: { mentor: { select: { id: true, firstName: true, lastName: true } } } },
-              resources: true,
-            },
-          },
-        },
-      },
-    },
+    include: { mentor: { select: { id: true, firstName: true, lastName: true } } },
   });
   if (!course) {
     throw new AppError("Course not found", 404);
@@ -282,13 +273,40 @@ export async function getCourseRoadmapForUser(userId: string, courseSlug: string
   }
 
   const isStaff = STAFF_ROLES.includes(roleName ?? "");
-  if (enrollment && !isStaff && enrollment.lmsAccessExpiresAt && enrollment.lmsAccessExpiresAt < new Date()) {
-    throw new AppError("Your LMS access for this course has expired", 403);
+  if (enrollment && !isStaff) {
+    if (enrollment.status === "DROPPED") {
+      throw new AppError("You have been removed from this cohort and can no longer access the course.", 403);
+    }
+    if (enrollment.lmsAccessExpiresAt && enrollment.lmsAccessExpiresAt < new Date()) {
+      throw new AppError("Your LMS access for this course has expired", 403);
+    }
   }
-  const userPlan = enrollment?.plan ?? "ICAP";
-  const isLockedFor = (planAccess: string) => !isStaff && planAccess !== "BOTH" && planAccess !== userPlan;
 
-  const allLessonIds = course.modules.flatMap((m) => m.lessons.map((l) => l.id));
+  // Plan hierarchy: INTENSIVE_PRO > ICAP. A student on a higher plan can always access content
+  // gated at a lower tier — "ICAP only" content is accessible to INTENSIVE_PRO students too.
+  const PLAN_RANK: Record<string, number> = { ICAP: 1, INTENSIVE_PRO: 2 };
+  const userPlan = enrollment?.plan ?? "ICAP";
+  const isLockedFor = (planAccess: string) => {
+    if (isStaff || planAccess === "BOTH") return false;
+    return (PLAN_RANK[userPlan] ?? 0) < (PLAN_RANK[planAccess] ?? 0);
+  };
+
+  // Modules are now owned by the cohort — each cohort has its own independent curriculum.
+  const cohortModules = await prisma.module.findMany({
+    where: { cohortId: cohort.id },
+    orderBy: { order: "asc" },
+    include: {
+      lessons: {
+        orderBy: { order: "asc" },
+        include: {
+          liveClass: { include: { mentor: { select: { id: true, firstName: true, lastName: true } } } },
+          resources: true,
+        },
+      },
+    },
+  });
+
+  const allLessonIds = cohortModules.flatMap((m) => m.lessons.map((l) => l.id));
   const completedRows = allLessonIds.length
     ? await prisma.lessonProgress.findMany({
         where: { userId, lessonId: { in: allLessonIds }, completed: true },
@@ -301,18 +319,29 @@ export async function getCourseRoadmapForUser(userId: string, courseSlug: string
     enrollment && !isStaff && enrollment.recordingAccessExpiresAt && enrollment.recordingAccessExpiresAt < new Date()
   );
 
-  const modules = course.modules.map((module) => {
+  // Unlock mode is now per-cohort so each cohort can have independent navigation rules.
+  const cohortRecord = await prisma.cohort.findUnique({ where: { id: cohort.id }, select: { unlockMode: true } });
+  const isSequential = (cohortRecord?.unlockMode ?? "FREE") === "SEQUENTIAL";
+
+  const modules = cohortModules.map((module, moduleIndex) => {
     const moduleLockedByPlan = isLockedFor(module.planAccess);
-    const lessons = module.lessons.map((lesson) => {
+    const lessons = module.lessons.map((lesson, lessonIndex) => {
       const lessonLockedByPlan = moduleLockedByPlan || isLockedFor(lesson.planAccess);
+      // In SEQUENTIAL mode, lesson N is accessible only after lesson N-1 is completed.
+      // Lesson 0 is always accessible (it's the entry point).
+      const lessonLockedBySequential =
+        isSequential && !moduleLockedByPlan && lessonIndex > 0
+          ? !completedSet.has(module.lessons[lessonIndex - 1].id)
+          : false;
       return {
         ...lesson,
         // Content is stripped server-side for plan-locked lessons — a locked lesson is never
         // viewable by navigating directly to its URL, not just hidden behind a disabled button.
-        contentUrl: lessonLockedByPlan ? null : lesson.contentUrl,
-        content: lessonLockedByPlan ? null : lesson.content,
+        contentUrl: lessonLockedByPlan || lessonLockedBySequential ? null : lesson.contentUrl,
+        content: lessonLockedByPlan || lessonLockedBySequential ? null : lesson.content,
         completed: completedSet.has(lesson.id),
         lockedByPlan: lessonLockedByPlan,
+        lockedBySequential: lessonLockedBySequential,
         liveClass: lesson.liveClass
           ? (() => {
               // The raw S3 key is never sent to the frontend (`recordingUrl` is dropped entirely)
@@ -321,11 +350,12 @@ export async function getCourseRoadmapForUser(userId: string, courseSlug: string
               // (which re-checks this exact same access logic server-side, never trusting this
               // flag alone).
               const { recordingUrl, ...rest } = lesson.liveClass;
+              const locked = lessonLockedByPlan || lessonLockedBySequential;
               return {
                 ...rest,
                 isLiveNow: isLiveNow(lesson.liveClass),
-                hasRecording: Boolean(recordingUrl) && !lessonLockedByPlan && !recordingAccessExpired,
-                joinUrl: lessonLockedByPlan ? null : lesson.liveClass.joinUrl,
+                hasRecording: Boolean(recordingUrl) && !locked && !recordingAccessExpired,
+                joinUrl: locked ? null : lesson.liveClass.joinUrl,
               };
             })()
           : null,
@@ -333,13 +363,34 @@ export async function getCourseRoadmapForUser(userId: string, courseSlug: string
     });
     const completedCount = lessons.filter((l) => l.completed).length;
     const moduleStatus = completedCount === lessons.length && lessons.length > 0 ? "completed" : completedCount > 0 ? "in-progress" : "locked";
-    return { ...module, lessons, completedCount, status: moduleStatus, lockedByPlan: moduleLockedByPlan };
+    return { ...module, lessons, completedCount, status: moduleStatus, lockedByPlan: moduleLockedByPlan, moduleIndex };
   });
+
+  // In SEQUENTIAL mode, apply module-level sequential gating: module N is accessible only after
+  // module N-1 is fully completed. Module 0 is always the entry point (never gated).
+  if (isSequential) {
+    for (let i = 0; i < modules.length; i++) {
+      if (i === 0) {
+        // First module is always accessible; promote "locked" → "in-progress" so students can start.
+        if (modules[i].status === "locked" && modules[i].lessons.length > 0) {
+          (modules[i] as typeof modules[number] & { status: string }).status = "in-progress";
+        }
+      } else {
+        // All subsequent modules are locked until the prior one is completed.
+        if (modules[i - 1].status !== "completed") {
+          (modules[i] as typeof modules[number] & { status: string }).status = "locked";
+        } else if (modules[i].status === "locked" && modules[i].lessons.length > 0) {
+          // Prior module is completed and this one hasn't been started yet — make it accessible.
+          (modules[i] as typeof modules[number] & { status: string }).status = "in-progress";
+        }
+      }
+    }
+  }
 
   // Completion is scoped to what this plan can actually access — an ICAP student isn't penalized
   // for Intensive-Pro-only lessons they were never going to see, and 100% (and certificate
   // eligibility, which reads this same percentage) is reachable on their own plan.
-  const accessibleModules = isStaff ? course.modules : course.modules.filter((m) => !isLockedFor(m.planAccess));
+  const accessibleModules = isStaff ? cohortModules : cohortModules.filter((m) => !isLockedFor(m.planAccess));
   const accessibleLessons = accessibleModules.flatMap((m) =>
     isStaff ? m.lessons : m.lessons.filter((l) => !isLockedFor(l.planAccess))
   );
@@ -353,7 +404,7 @@ export async function getCourseRoadmapForUser(userId: string, courseSlug: string
       slug: course.slug,
       title: course.title,
       description: course.description,
-      unlockMode: course.unlockMode,
+      unlockMode: cohortRecord?.unlockMode ?? "FREE",
       mentor: course.mentor,
     },
     cohort,

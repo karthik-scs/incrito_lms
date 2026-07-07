@@ -100,10 +100,37 @@ export async function updateAssessment(
     timeLimitMinutes: number;
     maxAttempts: number;
     status: "DRAFT" | "PUBLISHED" | "ARCHIVED";
+    questions: QuestionInput[];
   }>
 ) {
   await getAssessmentOrThrow(id);
-  return prisma.assessment.update({ where: { id }, data });
+  const { questions, ...meta } = data;
+  if (questions && questions.length > 0) {
+    // Replace all questions atomically: delete existing, create new ones.
+    await prisma.$transaction([
+      prisma.question.deleteMany({ where: { assessmentId: id } }),
+      prisma.assessment.update({
+        where: { id },
+        data: {
+          ...meta,
+          questions: {
+            create: questions.map((q, index) => ({
+              text: q.text,
+              type: q.type,
+              marks: q.marks,
+              order: index + 1,
+              options: { create: q.options.map((o) => ({ text: o.text, isCorrect: o.isCorrect })) },
+            })),
+          },
+        },
+      }),
+    ]);
+    return prisma.assessment.findUnique({
+      where: { id },
+      include: { questions: { include: { options: true }, orderBy: { order: "asc" } } },
+    });
+  }
+  return prisma.assessment.update({ where: { id }, data: meta });
 }
 
 export async function deleteAssessment(id: string) {

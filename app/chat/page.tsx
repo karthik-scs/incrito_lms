@@ -77,7 +77,7 @@ function isPremiumPairing(myRole: string | undefined, otherRole: string) {
   return (myRole === "Student" && otherRole === "Mentor") || (myRole === "Mentor" && otherRole === "Student");
 }
 
-function MessageAttachment({ url, type }: { url: string; type?: string | null }) {
+function MessageAttachment({ url, type, content }: { url: string; type?: string | null; content?: string | null }) {
   if (type === "BOOKING_REQUEST")
     return (
       <div className="flex items-center gap-2 text-xs bg-white/10 rounded-lg px-2.5 py-2 mt-1">
@@ -85,13 +85,27 @@ function MessageAttachment({ url, type }: { url: string; type?: string | null })
         <span className="leading-snug opacity-90">Session request sent — check your Sessions page.</span>
       </div>
     );
-  if (type === "BOOKING_CONFIRMED")
+  if (type === "BOOKING_CONFIRMED") {
+    const meetingUrl = content?.match(/https?:\/\/\S+/)?.[0];
     return (
-      <div className="flex items-center gap-2 text-xs bg-white/10 rounded-lg px-2.5 py-2 mt-1">
-        <CalendarPlus size={13} className="shrink-0 opacity-80" />
-        <span className="leading-snug opacity-90">Session confirmed — see your Calendar.</span>
+      <div className="flex flex-col gap-1.5 text-xs bg-white/10 rounded-lg px-2.5 py-2 mt-1">
+        <div className="flex items-center gap-2">
+          <CalendarPlus size={13} className="shrink-0 opacity-80" />
+          <span className="leading-snug opacity-90">Session confirmed</span>
+        </div>
+        {meetingUrl && (
+          <a
+            href={meetingUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md bg-white/20 hover:bg-white/30 font-medium text-white transition-colors"
+          >
+            Join Meeting
+          </a>
+        )}
       </div>
     );
+  }
   if (type === "IMAGE") return <img src={url} alt="Attachment" className="max-w-[220px] rounded-lg" />;
   if (type === "VIDEO")
     return (
@@ -586,8 +600,10 @@ export default function ChatPage() {
                               : "bg-surface-secondary text-text-primary rounded-bl-sm"
                           }`}
                         >
-                          {message.content && <span className="leading-relaxed">{message.content}</span>}
-                          {message.attachmentUrl && <MessageAttachment url={message.attachmentUrl} type={message.attachmentType} />}
+                                          {message.attachmentType === "BOOKING_CONFIRMED"
+                            ? null
+                            : message.content && <span className="leading-relaxed">{message.content}</span>}
+                          {message.attachmentUrl && <MessageAttachment url={message.attachmentUrl} type={message.attachmentType} content={message.content} />}
                         </div>
                         <p className={`text-[10px] text-text-muted px-1 ${isMine ? "text-right" : "text-left"}`}>
                           {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}

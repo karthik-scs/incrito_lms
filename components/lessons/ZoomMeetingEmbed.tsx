@@ -15,7 +15,7 @@ export function ZoomMeetingEmbed({ joinUrl, title }: { lessonId: string; joinUrl
           <ExternalLink size={16} />
           Join Live Class
         </Button>
-        <p className="text-xs text-white/50 max-w-sm">Opens Zoom in a new tab.</p>
+        <p className="text-xs text-white/50 max-w-sm">Opens in a new tab.</p>
       </div>
     </div>
   );

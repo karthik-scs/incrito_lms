@@ -3,13 +3,18 @@ import { success } from "../utils/apiResponse";
 import * as moduleService from "../services/module.service";
 
 export async function list(req: Request, res: Response) {
-  const courseId = String(req.query.courseId ?? "");
-  const modules = await moduleService.listModules(courseId);
+  const cohortId = String(req.query.cohortId ?? "");
+  if (!cohortId) return success(res, []);
+  const modules = await moduleService.listModules(cohortId);
   return success(res, modules);
 }
 
 export async function create(req: Request, res: Response) {
-  const module = await moduleService.createModule(req.body);
+  const module = await moduleService.createModule({
+    ...req.body,
+    callerUserId: req.user!.id,
+    callerRoleName: req.user!.roleName,
+  });
   return success(res, module, 201);
 }
 
@@ -24,6 +29,6 @@ export async function remove(req: Request, res: Response) {
 }
 
 export async function reorder(req: Request, res: Response) {
-  const modules = await moduleService.reorderModules(req.body.courseId, req.body.orderedIds);
+  const modules = await moduleService.reorderModules(req.body.cohortId, req.body.orderedIds);
   return success(res, modules);
 }

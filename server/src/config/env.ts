@@ -16,9 +16,8 @@ const envSchema = z.object({
    *  intercepts <img>/<video> tag requests, which can't send the bypass header, so a tunnel URL here
    *  breaks every uploaded image/file from ever rendering). */
   PUBLIC_API_URL: z.string().default("http://localhost:4000"),
-  /** Used only to build the Zoom webhook URL shown in Settings — this one DOES need to be a real
-   *  public URL (e.g. an ngrok tunnel) since Zoom's servers call it directly, not a browser. Falls
-   *  back to PUBLIC_API_URL if unset, which is fine for any environment that's already public. */
+  /** Needs to be a real public URL (e.g. an ngrok tunnel) for Zoho OAuth callbacks.
+   *  Falls back to PUBLIC_API_URL if unset, fine for any environment that's already public. */
   PUBLIC_WEBHOOK_URL: z.string().optional(),
   SEED_ADMIN_EMAIL: z.string().optional(),
   SEED_ADMIN_PASSWORD: z.string().optional(),
@@ -65,7 +64,7 @@ export const env = {
   /** next dev falls back to 3001+ when 3000 is taken — accept any configured origin, not just the first. */
   corsOrigins: parsedEnv.CORS_ORIGIN.split(",").map((origin) => origin.trim()),
   publicWebhookUrl: parsedEnv.PUBLIC_WEBHOOK_URL ?? parsedEnv.PUBLIC_API_URL,
-  /** Zoho calls this directly after a user consents — needs the same public-URL caveat as the Zoom webhook URL. */
+  /** Zoho calls this directly after a user consents — must be a real public URL. */
   zohoRedirectUri: `${parsedEnv.PUBLIC_WEBHOOK_URL ?? parsedEnv.PUBLIC_API_URL}/api/live-accounts/zoho/callback`,
   /** Where the Zoho OAuth callback sends the browser back to once it's done — the first configured frontend origin. */
   frontendUrl: parsedEnv.CORS_ORIGIN.split(",")[0].trim(),

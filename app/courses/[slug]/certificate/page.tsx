@@ -32,6 +32,7 @@ type Certificate = {
   issuedAt: string;
   cohort: { name: string; course: { title: string; slug: string } };
   template: { designUrl: string | null; layers: CertificateLayer[] } | null;
+  courseCertificate: { title: string } | null;
 };
 
 type EligibilityEntry = {
@@ -391,6 +392,7 @@ export default function CourseCertificatePage() {
                 <thead>
                   <tr className="border-b border-border text-left text-text-secondary">
                     <th className="py-2 font-medium">Course</th>
+                    <th className="py-2 font-medium">Certificate</th>
                     <th className="py-2 font-medium">Certificate ID</th>
                     <th className="py-2 font-medium">Issued On</th>
                     <th className="py-2 font-medium text-right">Action</th>
@@ -400,6 +402,7 @@ export default function CourseCertificatePage() {
                   {allCertificates.map((cert) => (
                     <tr key={cert.id} className="border-b border-border-light last:border-0">
                       <td className="py-2.5 text-text-primary">{cert.cohort.course.title}</td>
+                      <td className="py-2.5 text-text-secondary">{cert.courseCertificate?.title ?? "—"}</td>
                       <td className="py-2.5 text-text-secondary">{cert.certificateNumber}</td>
                       <td className="py-2.5 text-text-secondary">{new Date(cert.issuedAt).toLocaleDateString()}</td>
                       <td className="py-2.5 text-right">

@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { success } from "../utils/apiResponse";
 import * as lessonService from "../services/lesson.service";
 import * as progressService from "../services/progress.service";
+import * as hlsService from "../services/hls.service";
 
 export async function list(req: Request, res: Response) {
   const moduleId = String(req.query.moduleId ?? "");
@@ -50,8 +51,58 @@ export async function recordingUrl(req: Request, res: Response) {
 }
 
 export async function contentUrl(req: Request, res: Response) {
-  const url = await lessonService.getContentSignedUrl(String(req.params.id), req.user!.id);
-  return success(res, { url });
+  const clientIp = req.ip ?? req.socket.remoteAddress ?? "";
+  const result = await lessonService.getContentUrl(String(req.params.id), req.user!.id, clientIp);
+  return success(res, result);
+}
+
+export async function streamContent(req: Request, res: Response) {
+  const token = String(req.query.t ?? "");
+  if (!token) throw new (await import("../utils/AppError")).AppError("Missing stream token", 401);
+  const clientIp = req.ip ?? req.socket.remoteAddress ?? "";
+  await lessonService.streamLessonContent(String(req.params.id), token, req.headers.range, clientIp, res);
+}
+
+export async function hlsManifest(req: Request, res: Response) {
+  const token = String(req.query.t ?? "");
+  if (!token) throw new (await import("../utils/AppError")).AppError("Missing stream token", 401);
+  const clientIp = req.ip ?? req.socket.remoteAddress ?? "";
+  // Validate token + IP before serving the manifest.
+  const { verifyStreamToken } = await import("../services/token.service");
+  let payload: { lessonId: string; userId: string };
+  try {
+    payload = verifyStreamToken(token, clientIp);
+  } catch {
+    throw new (await import("../utils/AppError")).AppError("Invalid or expired stream token", 401);
+  }
+  if (payload.lessonId !== String(req.params.id)) {
+    throw new (await import("../utils/AppError")).AppError("Token does not match this lesson", 401);
+  }
+  const manifest = await hlsService.buildManifestResponse(String(req.params.id), token);
+  res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+  res.setHeader("Cache-Control", "no-store");
+  res.send(manifest);
+}
+
+export async function hlsKey(req: Request, res: Response) {
+  const token = String(req.query.t ?? "");
+  if (!token) throw new (await import("../utils/AppError")).AppError("Missing stream token", 401);
+  const clientIp = req.ip ?? req.socket.remoteAddress ?? "";
+  const { verifyStreamToken } = await import("../services/token.service");
+  let payload: { lessonId: string; userId: string };
+  try {
+    payload = verifyStreamToken(token, clientIp);
+  } catch {
+    throw new (await import("../utils/AppError")).AppError("Invalid or expired stream token", 401);
+  }
+  if (payload.lessonId !== String(req.params.id)) {
+    throw new (await import("../utils/AppError")).AppError("Token does not match this lesson", 401);
+  }
+  const keyBuf = await hlsService.getLessonHlsKey(String(req.params.id));
+  res.setHeader("Content-Type", "application/octet-stream");
+  res.setHeader("Content-Length", keyBuf.length);
+  res.setHeader("Cache-Control", "no-store");
+  res.send(keyBuf);
 }
 
 export async function complete(req: Request, res: Response) {

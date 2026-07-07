@@ -5,6 +5,7 @@ type PreferenceInput = Partial<{
   enrollmentEmails: boolean;
   announcementEmails: boolean;
   certificateEmails: boolean;
+  liveClassEmails: boolean;
   productUpdateEmails: boolean;
 }>;
 

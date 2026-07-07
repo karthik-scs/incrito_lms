@@ -15,7 +15,7 @@ type S3Config = { region: string; bucket: string; accessKeyId: string; secretKey
 let configCache: { config: S3Config; expiresAt: number; client: S3Client } | null = null;
 const CONFIG_TTL_MS = 60_000;
 
-async function getConfigAndClient(): Promise<{ config: S3Config; client: S3Client }> {
+export async function getConfigAndClient(): Promise<{ config: S3Config; client: S3Client }> {
   const now = Date.now();
   if (configCache && now < configCache.expiresAt) {
     return configCache;
@@ -84,6 +84,47 @@ export async function getPresignedGetUrl(key: string, expiresInSeconds = env.S3_
   const { config, client } = await getConfigAndClient();
   const command = new GetObjectCommand({ Bucket: config.bucket, Key: key });
   return getSignedUrl(client, command, { expiresIn: expiresInSeconds });
+}
+
+/**
+ * Proxies an S3 object to an HTTP response, with full Range-request support (video seeking).
+ * The caller must have already validated access — this function trusts the key is authorised.
+ *
+ * Returns { status, headers } so the controller can set them before piping the body.
+ */
+export async function proxyS3Stream(
+  key: string,
+  rangeHeader: string | undefined,
+  res: import("express").Response,
+): Promise<void> {
+  const { config, client } = await getConfigAndClient();
+  const command = new GetObjectCommand({
+    Bucket: config.bucket,
+    Key: key,
+    ...(rangeHeader ? { Range: rangeHeader } : {}),
+  });
+
+  const s3Response = await client.send(command);
+  const body = s3Response.Body;
+  if (!body) throw new AppError("No content returned from storage", 502);
+
+  const status = rangeHeader ? 206 : 200;
+  res.status(status);
+  if (s3Response.ContentType) res.setHeader("Content-Type", s3Response.ContentType);
+  if (s3Response.ContentLength != null) res.setHeader("Content-Length", s3Response.ContentLength);
+  if (s3Response.ContentRange) res.setHeader("Content-Range", s3Response.ContentRange);
+  res.setHeader("Accept-Ranges", "bytes");
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+
+  // The AWS SDK returns a web-api ReadableStream; convert to Node.js stream for piping.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (typeof (body as any).pipe === "function") {
+    (body as unknown as NodeJS.ReadableStream).pipe(res);
+  } else {
+    const { Readable } = await import("node:stream");
+    Readable.fromWeb(body as unknown as Parameters<typeof Readable.fromWeb>[0]).pipe(res);
+  }
 }
 
 export async function isS3Configured() {

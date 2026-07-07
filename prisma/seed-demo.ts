@@ -42,8 +42,7 @@ async function upsertUser(data: {
 }
 
 async function recomputeProgress(userId: string, cohortId: string) {
-  const cohort = await prisma.cohort.findUniqueOrThrow({ where: { id: cohortId } });
-  const modules = await prisma.module.findMany({ where: { courseId: cohort.courseId }, include: { lessons: true } });
+  const modules = await prisma.module.findMany({ where: { cohortId }, include: { lessons: true } });
   const lessonIds = modules.flatMap((m) => m.lessons.map((l) => l.id));
 
   const completedCount = lessonIds.length
@@ -179,12 +178,27 @@ async function main() {
     },
   });
 
+  const pythonCohort = await prisma.cohort.upsert({
+    where: { id: "demo-python-batch-a" },
+    update: {},
+    create: {
+      id: "demo-python-batch-a",
+      courseId: pythonCourse.id,
+      name: "Python Batch A",
+      status: "ACTIVE",
+      startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+      capacity: 20,
+      mentors: { create: [{ userId: mentorCarlos.id }] },
+      managers: { create: [{ userId: managerMaria.id }] },
+    },
+  });
+
   const pyModule1 =
-    (await prisma.module.findFirst({ where: { courseId: pythonCourse.id, order: 1 } })) ??
-    (await prisma.module.create({ data: { courseId: pythonCourse.id, title: "Getting Started", order: 1 } }));
+    (await prisma.module.findFirst({ where: { cohortId: pythonCohort.id, order: 1 } })) ??
+    (await prisma.module.create({ data: { cohortId: pythonCohort.id, title: "Getting Started", order: 1 } }));
   const pyModule2 =
-    (await prisma.module.findFirst({ where: { courseId: pythonCourse.id, order: 2 } })) ??
-    (await prisma.module.create({ data: { courseId: pythonCourse.id, title: "Control Flow", order: 2 } }));
+    (await prisma.module.findFirst({ where: { cohortId: pythonCohort.id, order: 2 } })) ??
+    (await prisma.module.create({ data: { cohortId: pythonCohort.id, title: "Control Flow", order: 2 } }));
 
   type LessonSeedInput = {
     title: string;
@@ -239,9 +253,8 @@ async function main() {
         mentorId: mentorCarlos.id,
         startTime: start,
         endTime: end,
-        zoomMeetingId: String(Math.floor(1000000000 + Math.random() * 8999999999)),
-        joinUrl: "https://zoom.us/j/0000000000?pwd=demo",
-        hostStartUrl: "https://zoom.us/s/0000000000?pwd=demo&role=1",
+        joinUrl: "https://meeting.zoho.com/meeting/join/demo-python",
+        hostStartUrl: "https://meeting.zoho.com/meeting/start/demo-python",
       },
     });
     pyLiveLesson = await prisma.lesson.create({
@@ -266,12 +279,27 @@ async function main() {
     },
   });
 
+  const uxCohort = await prisma.cohort.upsert({
+    where: { id: "demo-ux-batch-a" },
+    update: {},
+    create: {
+      id: "demo-ux-batch-a",
+      courseId: uxCourse.id,
+      name: "UX Batch A",
+      status: "ACTIVE",
+      startDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+      capacity: 15,
+      mentors: { create: [{ userId: mentorPriya.id }] },
+      managers: { create: [{ userId: managerLiam.id }] },
+    },
+  });
+
   const uxModule1 =
-    (await prisma.module.findFirst({ where: { courseId: uxCourse.id, order: 1 } })) ??
-    (await prisma.module.create({ data: { courseId: uxCourse.id, title: "Design Principles", order: 1 } }));
+    (await prisma.module.findFirst({ where: { cohortId: uxCohort.id, order: 1 } })) ??
+    (await prisma.module.create({ data: { cohortId: uxCohort.id, title: "Design Principles", order: 1 } }));
   const uxModule2 =
-    (await prisma.module.findFirst({ where: { courseId: uxCourse.id, order: 2 } })) ??
-    (await prisma.module.create({ data: { courseId: uxCourse.id, title: "Prototyping", order: 2 } }));
+    (await prisma.module.findFirst({ where: { cohortId: uxCohort.id, order: 2 } })) ??
+    (await prisma.module.create({ data: { cohortId: uxCohort.id, title: "Prototyping", order: 2 } }));
 
   const uxLesson1 = await ensureLesson(uxModule1.id, 1, {
     title: "Intro to UI vs UX",
@@ -306,46 +334,14 @@ async function main() {
         mentorId: mentorPriya.id,
         startTime: start,
         endTime: end,
-        zoomMeetingId: String(Math.floor(1000000000 + Math.random() * 8999999999)),
-        joinUrl: "https://zoom.us/j/1111111111?pwd=demo",
-        hostStartUrl: "https://zoom.us/s/1111111111?pwd=demo&role=1",
+        joinUrl: "https://meeting.zoho.com/meeting/join/demo-ux",
+        hostStartUrl: "https://meeting.zoho.com/meeting/start/demo-ux",
       },
     });
     uxLiveLesson = await prisma.lesson.create({
       data: { moduleId: uxModule2.id, title: "Live Workshop: Figma Basics", type: "LIVE", order: 2, liveClassId: liveClass.id },
     });
   }
-
-  // ---- Cohorts ----
-  const pythonCohort = await prisma.cohort.upsert({
-    where: { id: "demo-python-batch-a" },
-    update: {},
-    create: {
-      id: "demo-python-batch-a",
-      courseId: pythonCourse.id,
-      name: "Python Batch A",
-      status: "ACTIVE",
-      startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-      capacity: 20,
-      mentors: { create: [{ userId: mentorCarlos.id }] },
-      managers: { create: [{ userId: managerMaria.id }] },
-    },
-  });
-
-  const uxCohort = await prisma.cohort.upsert({
-    where: { id: "demo-ux-batch-a" },
-    update: {},
-    create: {
-      id: "demo-ux-batch-a",
-      courseId: uxCourse.id,
-      name: "UX Batch A",
-      status: "ACTIVE",
-      startDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
-      capacity: 15,
-      mentors: { create: [{ userId: mentorPriya.id }] },
-      managers: { create: [{ userId: managerLiam.id }] },
-    },
-  });
 
   // ---- Enrollments ----
   async function ensureEnrollment(userId: string, cohortId: string) {

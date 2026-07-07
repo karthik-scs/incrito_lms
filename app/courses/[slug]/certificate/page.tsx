@@ -30,7 +30,7 @@ type Certificate = {
   certificateNumber: string;
   verificationToken: string;
   issuedAt: string;
-  cohort: { name: string; course: { title: string; slug: string } };
+  cohort: { id: string; name: string; course: { title: string; slug: string } };
   template: { designUrl: string | null; layers: CertificateLayer[] } | null;
   courseCertificate: { title: string } | null;
 };

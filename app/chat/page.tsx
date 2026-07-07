@@ -129,10 +129,12 @@ function MessageReactionBar({
   reactions,
   userId,
   onReact,
+  isMine,
 }: {
   reactions: MessageReaction[];
   userId?: string;
   onReact: (emoji: string) => void;
+  isMine?: boolean;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const counts = reactions.reduce<Record<string, number>>((acc, r) => {
@@ -163,7 +165,7 @@ function MessageReactionBar({
         <Smile size={13} />
       </button>
       {pickerOpen && (
-        <div className="absolute bottom-full left-0 mb-1 z-20">
+        <div className={`absolute bottom-full mb-1 z-20 ${isMine ? "right-0" : "left-0"}`}>
           <EmojiPicker
             onSelect={(emoji) => {
               onReact(emoji);
@@ -616,7 +618,7 @@ export default function ChatPage() {
                         <p className={`text-[10px] text-text-muted px-1 ${isMine ? "text-right" : "text-left"}`}>
                           {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                         </p>
-                        <MessageReactionBar reactions={message.reactions} userId={user?.id} onReact={(emoji) => handleReact(message.id, emoji)} />
+                        <MessageReactionBar reactions={message.reactions} userId={user?.id} isMine={isMine} onReact={(emoji) => handleReact(message.id, emoji)} />
                       </div>
                     </div>
                   );

@@ -1,6 +1,16 @@
 import { prisma } from "../lib/prisma";
 import { AppError } from "../utils/AppError";
 import { notifyUser } from "./notification.service";
+import { emitToUsers } from "./sse.service";
+
+function extractMentionedUserIds(content: string | undefined | null): string[] {
+  if (!content) return [];
+  const ids: string[] = [];
+  const regex = /@\[([^:]+):[^\]]+\]/g;
+  let m: RegExpExecArray | null;
+  while ((m = regex.exec(content)) !== null) ids.push(m[1]);
+  return [...new Set(ids)];
+}
 
 const authorSelect = {
   select: { id: true, firstName: true, lastName: true, avatarUrl: true, role: { select: { name: true } } },
@@ -202,6 +212,7 @@ export async function addComment(
     include: { author: authorSelect, reactions: { select: { id: true, userId: true, emoji: true } } },
   });
 
+  // Notify the reply target (parent comment author or post author).
   const targetId = parentCommentId
     ? (await prisma.comment.findUnique({ where: { id: parentCommentId } }))?.authorId
     : post.authorId;
@@ -213,6 +224,29 @@ export async function addComment(
       `${comment.author.firstName} replied to your post.`,
       { postId }
     ).catch(() => null);
+  }
+
+  // Notify each @mentioned user (skip author and the already-notified reply target).
+  const mentionedIds = extractMentionedUserIds(content).filter(
+    (id) => id !== authorId && id !== targetId
+  );
+  for (const mentionedId of mentionedIds) {
+    await notifyUser(
+      mentionedId,
+      "ANNOUNCEMENT",
+      "You were mentioned",
+      `${comment.author.firstName} mentioned you in a community post.`,
+      { postId }
+    ).catch(() => null);
+  }
+
+  // Push a live-update event to all community members so their feed refreshes.
+  if (post.communityId) {
+    const communityMembers = await prisma.communityMember.findMany({
+      where: { communityId: post.communityId },
+      select: { userId: true },
+    });
+    emitToUsers(communityMembers.map((m) => m.userId), "discussion_update", { postId, communityId: post.communityId });
   }
 
   return comment;

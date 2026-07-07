@@ -41,7 +41,7 @@ export function EventStreamProvider({ children }: { children: React.ReactNode })
       const es = new EventSource(url);
       esRef.current = es;
 
-      const KNOWN_EVENTS = ["notification", "progress", "live_class", "hls_ready", "enrollment"];
+      const KNOWN_EVENTS = ["notification", "progress", "live_class", "hls_ready", "enrollment", "discussion_update"];
       for (const type of KNOWN_EVENTS) {
         es.addEventListener(type, (e: MessageEvent) => {
           try {

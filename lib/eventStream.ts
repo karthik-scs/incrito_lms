@@ -3,16 +3,17 @@
  *
  * The EventStreamProvider (components/providers/EventStreamProvider.tsx) opens one
  * EventSource connection per session, parses incoming events, and calls `_emit`.
- * Components subscribe with `useEvent(type, handler)` — the handler is called whenever
- * the server pushes a matching event, triggering a targeted refetch instead of a full
- * page reload.
+ * Components subscribe with `onStreamEvent(type, handler)` — the returned function
+ * unsubscribes and is meant to be returned from a `useEffect`.
  *
  * Supported event types (mirrors what the server emits):
- *   notification  — a new notification was created for this user
- *   progress      — this user completed a lesson (roadmap / dashboard stats update)
- *   live_class    — a live class changed status (LIVE / COMPLETED)
- *   hls_ready     — HLS encryption finished for a lesson; player should switch to HLS
- *   enrollment    — an enrollment was created or updated for this user
+ *   notification       — a new notification was created for this user
+ *   progress           — this user completed a lesson (roadmap / dashboard stats update)
+ *   live_class         — a live class changed status (LIVE / COMPLETED)
+ *   hls_ready          — HLS encryption finished for a lesson; player should switch to HLS
+ *   enrollment         — an enrollment was created or updated for this user
+ *   discussion_update  — a new comment was added to a cohort discussion or community post
+ *                        payload: { postId, cohortId? } | { postId, communityId? }
  */
 
 type Handler = (data: Record<string, unknown>) => void;

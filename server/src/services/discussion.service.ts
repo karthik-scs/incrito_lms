@@ -1,6 +1,16 @@
 import { prisma } from "../lib/prisma";
 import { AppError } from "../utils/AppError";
 import { notifyUser } from "./notification.service";
+import { emitToUsers } from "./sse.service";
+
+function extractMentionedUserIds(content: string | undefined | null): string[] {
+  if (!content) return [];
+  const ids: string[] = [];
+  const regex = /@\[([^:]+):[^\]]+\]/g;
+  let m: RegExpExecArray | null;
+  while ((m = regex.exec(content)) !== null) ids.push(m[1]);
+  return [...new Set(ids)];
+}
 
 const authorSelect = { select: { id: true, firstName: true, lastName: true, avatarUrl: true, role: { select: { name: true } } } } as const;
 
@@ -113,19 +123,51 @@ export async function addComment(
     include: { author: authorSelect },
   });
 
+  // Resolve course slug once — used by both reply and mention notifications.
+  const courseSlug = post.cohortId
+    ? (await prisma.cohort.findUnique({ where: { id: post.cohortId }, include: { course: { select: { slug: true } } } }))
+        ?.course.slug
+    : undefined;
+
+  // Notify the reply target (parent comment author or post author).
   const notifyTargetId = parentCommentId
     ? (await prisma.comment.findUnique({ where: { id: parentCommentId } }))?.authorId
     : post.authorId;
   if (notifyTargetId && notifyTargetId !== authorId) {
-    const courseSlug = post.cohortId
-      ? (await prisma.cohort.findUnique({ where: { id: post.cohortId }, include: { course: { select: { slug: true } } } }))
-          ?.course.slug
-      : undefined;
     await notifyUser(notifyTargetId, "ANNOUNCEMENT", "New reply", `${comment.author.firstName} replied to your post.`, {
       postId,
       courseSlug,
       action: "view_discussion",
     }).catch(() => null);
+  }
+
+  // Notify each @mentioned user (skip author and the already-notified reply target).
+  const mentionedIds = extractMentionedUserIds(content).filter(
+    (id) => id !== authorId && id !== notifyTargetId
+  );
+  for (const mentionedId of mentionedIds) {
+    await notifyUser(
+      mentionedId,
+      "ANNOUNCEMENT",
+      "You were mentioned",
+      `${comment.author.firstName} mentioned you in a comment.`,
+      { postId, courseSlug, action: "view_discussion" }
+    ).catch(() => null);
+  }
+
+  // Push a live-update event to all cohort members so their discussion pages refresh.
+  if (post.cohortId) {
+    const [enrollments, cohortMentors, managers] = await Promise.all([
+      prisma.enrollment.findMany({ where: { cohortId: post.cohortId }, select: { userId: true } }),
+      prisma.cohortMentor.findMany({ where: { cohortId: post.cohortId }, select: { userId: true } }),
+      prisma.cohortManagerAssignment.findMany({ where: { cohortId: post.cohortId }, select: { userId: true } }),
+    ]);
+    const memberIds = [
+      ...enrollments.map((e) => e.userId),
+      ...cohortMentors.map((m) => m.userId),
+      ...managers.map((m) => m.userId),
+    ];
+    emitToUsers([...new Set(memberIds)], "discussion_update", { postId, cohortId: post.cohortId });
   }
 
   return comment;

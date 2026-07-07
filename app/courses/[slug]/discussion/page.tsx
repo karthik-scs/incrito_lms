@@ -10,6 +10,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Select } from "@/components/ui/Select";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { apiJson } from "@/lib/authClient";
+import { onStreamEvent } from "@/lib/eventStream";
 import { MentionInput, renderMentionText } from "@/components/community/MentionInput";
 
 type Author = { id: string; firstName: string; lastName: string; avatarUrl: string | null; role: { name: string } };
@@ -297,6 +298,16 @@ export default function CourseDiscussionPage() {
     loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.slug, user?.id]);
+
+  // Reload the discussion thread when any member posts a comment (no page refresh needed).
+  useEffect(() => {
+    const postId = post?.id;
+    if (!postId) return;
+    return onStreamEvent("discussion_update", (data) => {
+      if (data.postId === postId) loadPost(postId);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [post?.id]);
 
   async function handleAttachmentChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];

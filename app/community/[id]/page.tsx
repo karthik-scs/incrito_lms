@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { apiJson } from "@/lib/authClient";
+import { onStreamEvent } from "@/lib/eventStream";
 import { MentionInput, renderMentionText } from "@/components/community/MentionInput";
 import { EmojiPicker } from "@/components/community/EmojiPicker";
 
@@ -495,6 +496,14 @@ export default function CommunityDetailPage() {
   }
 
   useEffect(() => { load(); }, [params.id]);
+
+  // Reload posts when any member comments so the feed updates without a page refresh.
+  useEffect(() => {
+    return onStreamEvent("discussion_update", (data) => {
+      if (data.communityId === params.id) load();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.id]);
 
   function openPollModal() {
     setPollQuestion("");

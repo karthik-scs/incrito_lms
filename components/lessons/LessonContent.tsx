@@ -75,6 +75,18 @@ function LiveSession({ lessonId, liveClass, title }: { lessonId: string; liveCla
       </div>
 
       {!cancelled && <p className="text-sm text-text-muted">Starts in {formatCountdown(remainingMs)}</p>}
+
+      {!cancelled && liveClass.joinUrl && (
+        <a
+          href={liveClass.joinUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-accent-foreground hover:bg-accent-dark font-medium text-sm transition-colors"
+        >
+          <Radio size={14} />
+          Join Meeting
+        </a>
+      )}
     </div>
   );
 }

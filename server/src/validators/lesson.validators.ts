@@ -4,6 +4,7 @@ const liveClassInputSchema = z.object({
   startTime: z.coerce.date(),
   endTime: z.coerce.date(),
   mentorId: z.string().min(1),
+  joinUrl: z.string().url().optional(),
   userLiveAccountId: z.string().min(1).optional(),
 });
 

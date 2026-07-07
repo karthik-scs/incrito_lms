@@ -39,6 +39,7 @@ const NAV_ITEMS: Record<SidebarRole, NavItem[]> = {
     { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { label: "My Courses", href: "/courses", icon: BookOpen },
     { label: "Calendar", href: "/calendar", icon: Calendar },
+    { label: "Announcements", href: "/admin/announcements", icon: Megaphone },
     { label: "Community", href: "/community", icon: Users },
   ],
   Mentor: [

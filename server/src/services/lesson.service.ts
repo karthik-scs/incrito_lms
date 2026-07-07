@@ -13,6 +13,7 @@ type LiveClassInput = {
   startTime: Date;
   endTime: Date;
   mentorId: string;
+  joinUrl?: string;
   userLiveAccountId?: string;
 };
 
@@ -96,12 +97,12 @@ async function scheduleLiveMeeting(input: LiveClassInput, topic: string): Promis
     };
   }
 
-  // No Zoho account selected — create the session without a meeting URL; mentor can add one later.
+  // No Zoho account — use manually-provided join URL if given, or leave null for later.
   return {
     provider: "ZOHO",
     userLiveAccountId: null,
     zohoMeetingId: null,
-    joinUrl: null,
+    joinUrl: input.joinUrl ?? null,
     hostStartUrl: null,
   };
 }

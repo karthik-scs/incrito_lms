@@ -241,6 +241,7 @@ export function CurriculumEditor({
   const [liveStart, setLiveStart] = useState("");
   const [liveEnd, setLiveEnd] = useState("");
   const [liveMentorId, setLiveMentorId] = useState("");
+  const [liveJoinUrl, setLiveJoinUrl] = useState("");
   const [hasZohoAccount, setHasZohoAccount] = useState(false);
   const [lessonError, setLessonError] = useState<string | null>(null);
   const [lessonSubmitting, setLessonSubmitting] = useState(false);
@@ -258,6 +259,7 @@ export function CurriculumEditor({
     setLiveStart("");
     setLiveEnd("");
     setLiveMentorId(user?.id ?? "");
+    setLiveJoinUrl("");
     setLessonError(null);
     setLessonModalOpen(true);
   }
@@ -317,6 +319,7 @@ export function CurriculumEditor({
                 startTime: new Date(liveStart).toISOString(),
                 endTime: new Date(liveEnd).toISOString(),
                 mentorId: liveMentorId,
+                joinUrl: liveJoinUrl || undefined,
                 userLiveAccountId:
                   liveMentorId === user?.id
                     ? (myLiveAccounts.find((a) => a.provider === "ZOHO")?.id ?? undefined)
@@ -675,6 +678,17 @@ export function CurriculumEditor({
                                     Host link (mentor)
                                   </a>
                                 )}
+                                {lesson.liveClass.status !== "COMPLETED" && lesson.liveClass.joinUrl && (
+                                  <a
+                                    href={lesson.liveClass.joinUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-xs text-accent hover:text-accent-dark font-medium flex items-center gap-1"
+                                  >
+                                    <Radio size={11} />
+                                    Join link
+                                  </a>
+                                )}
                               </div>
                             ) : (
                               <p className="text-xs text-text-muted mt-0.5 flex items-center gap-1">
@@ -872,11 +886,25 @@ export function CurriculumEditor({
                 </div>
               </div>
 
+              <div>
+                <label className="text-sm font-medium text-text-secondary" htmlFor="live-join-url">
+                  Meeting URL <span className="text-text-muted font-normal">(optional)</span>
+                </label>
+                <input
+                  id="live-join-url"
+                  type="url"
+                  value={liveJoinUrl}
+                  onChange={(e) => setLiveJoinUrl(e.target.value)}
+                  placeholder="https://zoom.us/j/... or Google Meet link"
+                  className="mt-1 w-full bg-surface border border-border rounded-md px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
+                />
+              </div>
+
               {liveMentorId === user?.id && (
                 <p className="text-xs text-text-muted">
                   {hasZohoAccount
-                    ? "Your connected Zoho account will be used to create this meeting automatically."
-                    : "You don't have a Zoho account connected. The session will be created without a meeting URL — you can add one in Settings → Live Class Account, then edit this lesson."}
+                    ? "Your connected Zoho account will be used to create this meeting automatically (the URL above will be ignored)."
+                    : "No Zoho account connected. Enter a meeting URL above so students and mentors can join."}
                 </p>
               )}
             </>

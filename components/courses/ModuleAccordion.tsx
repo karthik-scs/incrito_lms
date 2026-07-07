@@ -24,6 +24,7 @@ export type RoadmapLesson = {
   durationMinutes: number | null;
   completed: boolean;
   lockedByPlan?: boolean;
+  lockedBySequential?: boolean;
   liveClass: LessonLiveClass | null;
 };
 
@@ -141,7 +142,7 @@ export function ModuleAccordion({
                     <Icon size={14} className="text-text-muted shrink-0" />
                     <p
                       className={`text-sm font-medium truncate ${
-                        isLocked || lesson.lockedByPlan ? "text-text-muted" : "text-text-primary"
+                        isLocked || lesson.lockedByPlan || lesson.lockedBySequential ? "text-text-muted" : "text-text-primary"
                       }`}
                     >
                       {lesson.title}
@@ -196,7 +197,7 @@ export function ModuleAccordion({
                         </span>
                       </>
                     )
-                  ) : isLocked ? (
+                  ) : (isLocked || lesson.lockedBySequential) ? (
                     <span className="inline-flex items-center gap-1.5 bg-surface-secondary text-text-muted rounded-md px-3 py-1.5 text-xs font-medium cursor-not-allowed">
                       Locked
                       <Lock size={11} />

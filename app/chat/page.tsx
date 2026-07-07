@@ -98,7 +98,7 @@ function MessageAttachment({ url, type, content }: { url: string; type?: string 
             href={meetingUrl}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md bg-white/20 hover:bg-white/30 font-medium text-white transition-colors"
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md bg-accent text-accent-foreground hover:bg-accent-dark font-medium transition-colors"
           >
             Join Meeting
           </a>

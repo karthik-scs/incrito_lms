@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma";
 import { AppError } from "../utils/AppError";
+import type { Prisma } from "../../../app/generated/prisma/client";
 
 const ROLE_NAME_BY_AUDIENCE: Record<string, string | null> = {
   ALL: null,
@@ -42,9 +43,23 @@ async function getCohortMemberIds(userId: string, roleName: string): Promise<str
 }
 
 export async function listAnnouncements(requesterId: string, requesterRole: string) {
-  const where = ["Mentor", "Cohort Manager"].includes(requesterRole)
-    ? { createdById: requesterId }
-    : {};
+  let where: Prisma.AnnouncementWhereInput = {};
+
+  if (["Mentor", "Cohort Manager"].includes(requesterRole)) {
+    where = { createdById: requesterId };
+  } else if (requesterRole === "Student") {
+    const enrollments = await prisma.enrollment.findMany({
+      where: { userId: requesterId },
+      select: { cohortId: true },
+    });
+    const cohortIds = enrollments.map((e) => e.cohortId);
+    where = {
+      OR: [
+        { cohortId: null, audience: { in: ["ALL" as const, "STUDENTS" as const] } },
+        ...(cohortIds.length > 0 ? [{ cohortId: { in: cohortIds } }] : []),
+      ],
+    };
+  }
 
   const announcements = await prisma.announcement.findMany({
     where,

@@ -54,6 +54,7 @@ function timeAgo(iso: string) {
 export default function AnnouncementsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "Admin";
+  const isStudent = user?.role === "Student";
   const isScopedRole = user?.role === "Mentor" || user?.role === "Cohort Manager";
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [myCohorts, setMyCohorts] = useState<MyCohort[]>([]);
@@ -128,15 +129,19 @@ export default function AnnouncementsPage() {
         <div>
           <h1 className="text-2xl font-semibold text-text-primary">Announcements</h1>
           <p className="text-sm text-text-secondary mt-1">
-            {isAdmin
+            {isStudent
+              ? "Updates from your cohort and platform."
+              : isAdmin
               ? "Broadcast updates to students, mentors and cohort managers."
               : "Send announcements to your assigned cohort members."}
           </p>
         </div>
-        <Button onClick={openCreate}>
-          <Plus size={16} />
-          New Announcement
-        </Button>
+        {!isStudent && (
+          <Button onClick={openCreate}>
+            <Plus size={16} />
+            New Announcement
+          </Button>
+        )}
       </div>
 
       {loading && <p className="mt-6 text-sm text-text-secondary">Loading…</p>}
@@ -169,9 +174,11 @@ export default function AnnouncementsPage() {
                   <span className="flex items-center gap-1"><Users size={11} /> {a.recipientCount} recipients</span>
                 </div>
               </div>
-              <button onClick={() => handleDelete(a)} aria-label="Delete announcement" className="text-text-muted hover:text-error rounded-md p-1.5 shrink-0">
-                <Trash2 size={15} />
-              </button>
+              {!isStudent && (
+                <button onClick={() => handleDelete(a)} aria-label="Delete announcement" className="text-text-muted hover:text-error rounded-md p-1.5 shrink-0">
+                  <Trash2 size={15} />
+                </button>
+              )}
             </div>
           </div>
         ))}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 type User = { id: string; firstName: string; lastName: string; avatarUrl: string | null };
 
@@ -30,6 +30,11 @@ export function renderMentionText(text: string) {
   );
 }
 
+/** Convert internal @[id:name] format to display @name */
+function toDisplay(internal: string): string {
+  return internal.replace(/@\[([^:]+):([^\]]+)\]/g, (_, __, name) => `@${name}`);
+}
+
 export function MentionInput({
   value,
   onChange,
@@ -49,6 +54,26 @@ export function MentionInput({
   const [mentionStart, setMentionStart] = useState(0);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Maps "First Last" → userId for all mentions inserted via the dropdown
+  const mentionMapRef = useRef<Record<string, string>>({});
+
+  // Populate mentionMap from any existing @[id:name] tags in value
+  value.replace(/@\[([^:]+):([^\]]+)\]/g, (_, userId, name) => {
+    mentionMapRef.current[name] = userId;
+    return "";
+  });
+
+  const displayValue = toDisplay(value);
+
+  function displayToInternal(display: string): string {
+    let result = display;
+    // Sort by length descending to avoid partial matches (e.g. "Alex" before "Alex Johnson")
+    const entries = Object.entries(mentionMapRef.current).sort((a, b) => b[0].length - a[0].length);
+    for (const [name, userId] of entries) {
+      result = result.split(`@${name}`).join(`@[${userId}:${name}]`);
+    }
+    return result;
+  }
 
   const filtered = mentionQuery !== null
     ? members.filter((m) =>
@@ -57,10 +82,9 @@ export function MentionInput({
     : [];
 
   function handleInput(e: React.ChangeEvent<HTMLTextAreaElement>) {
-    const val = e.target.value;
-    onChange(val);
-    const cursor = e.target.selectionStart ?? val.length;
-    const textBefore = val.slice(0, cursor);
+    const display = e.target.value;
+    const cursor = e.target.selectionStart ?? display.length;
+    const textBefore = display.slice(0, cursor);
     const atMatch = textBefore.match(/@(\w*)$/);
     if (atMatch) {
       setMentionQuery(atMatch[1]);
@@ -70,13 +94,19 @@ export function MentionInput({
       setDropdownOpen(false);
       setMentionQuery(null);
     }
+    onChange(displayToInternal(display));
   }
 
   function insertMention(user: User) {
-    const tag = `@[${user.id}:${user.firstName} ${user.lastName}]`;
-    const before = value.slice(0, mentionStart);
-    const after = value.slice((textareaRef.current?.selectionStart ?? mentionStart) + (mentionQuery?.length ?? 0));
-    onChange(before + tag + " " + after);
+    const fullName = `${user.firstName} ${user.lastName}`;
+    mentionMapRef.current[fullName] = user.id;
+
+    const cursor = textareaRef.current?.selectionStart ?? (mentionStart + 1 + (mentionQuery?.length ?? 0));
+    const before = displayValue.slice(0, mentionStart);
+    const after = displayValue.slice(cursor);
+    const newDisplay = before + `@${fullName}` + " " + after;
+
+    onChange(displayToInternal(newDisplay));
     setDropdownOpen(false);
     setMentionQuery(null);
     setTimeout(() => textareaRef.current?.focus(), 0);
@@ -86,7 +116,7 @@ export function MentionInput({
     <div className="relative">
       <textarea
         ref={textareaRef}
-        value={value}
+        value={displayValue}
         onChange={handleInput}
         onKeyDown={(e) => { if (e.key === "Escape") setDropdownOpen(false); }}
         placeholder={placeholder}

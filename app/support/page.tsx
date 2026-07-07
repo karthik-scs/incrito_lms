@@ -13,21 +13,6 @@ type SupportSettings = {
   supportFaqs: { question: string; answer: string }[] | null;
 };
 
-const DEFAULT_FAQS = [
-  {
-    question: "How do I join a live class?",
-    answer: "Open the course's Roadmap tab and click the highlighted \"Live\" button once the session is about to start, or join straight from the Calendar page.",
-  },
-  {
-    question: "When does my certificate unlock?",
-    answer: "Certificates unlock automatically once you've completed 100% of a course's lessons — head to the course's Certificate tab to generate it.",
-  },
-  {
-    question: "How do I message my cohort?",
-    answer: "Use Chat in the sidebar — every cohort you're part of has its own group conversation.",
-  },
-];
-
 export default function SupportPage() {
   const [settings, setSettings] = useState<SupportSettings | null>(null);
 
@@ -43,7 +28,7 @@ export default function SupportPage() {
     settings?.supportCallStart && settings?.supportCallEnd
       ? `${settings.supportCallStart} – ${settings.supportCallEnd}`
       : "Mon–Fri, 9am–6pm";
-  const faqs = settings?.supportFaqs?.length ? settings.supportFaqs : DEFAULT_FAQS;
+  const faqs = settings?.supportFaqs ?? [];
 
   return (
     <AdminLayout>
@@ -96,6 +81,9 @@ export default function SupportPage() {
       <div className="mt-6 bg-surface border border-border rounded-2xl p-6">
         <h2 className="text-base font-semibold text-text-primary">Frequently Asked Questions</h2>
         <div className="mt-4 flex flex-col gap-4">
+          {faqs.length === 0 && (
+            <p className="text-sm text-text-muted text-center py-4">No FAQs configured yet.</p>
+          )}
           {faqs.map((faq) => (
             <div key={faq.question}>
               <p className="text-sm font-medium text-text-primary">{faq.question}</p>

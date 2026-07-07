@@ -36,7 +36,10 @@ function canAccessPath(role: SidebarRole, pathname: string): boolean {
       (pathname.startsWith("/admin/cohorts/") && pathname.split("/").filter(Boolean).length > 2)
     );
   }
-  return false; // Student has no admin routes
+  if (role === "Student") {
+    return pathname === "/admin/announcements";
+  }
+  return false;
 }
 
 function roleHome(role: SidebarRole): string {

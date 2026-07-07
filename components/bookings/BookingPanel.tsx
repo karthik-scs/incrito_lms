@@ -114,6 +114,7 @@ function AvailabilityManager() {
 // ── Book a session modal ────────────────────────────────────────────────────────
 
 type ComputedSlot = { scheduledAt: Date; durationMinutes: number; label: string };
+type MyCourse = { cohortId: string; cohortName: string };
 
 function computeSlots(availability: AvailabilitySlot[]): ComputedSlot[] {
   if (availability.length === 0) return [];
@@ -146,11 +147,22 @@ function computeSlots(availability: AvailabilitySlot[]): ComputedSlot[] {
 export function BookModal({ mentorId, mentorName, onClose, onBooked }: {
   mentorId: string; mentorName: string; onClose: () => void; onBooked: () => void;
 }) {
+  const [sessionTab, setSessionTab] = useState<"1on1" | "group">("1on1");
+
+  // 1:1 state
   const [availability, setAvailability] = useState<AvailabilitySlot[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(true);
   const [selectedSlot, setSelectedSlot] = useState<ComputedSlot | null>(null);
   const [topic, setTopic] = useState("");
   const [notes, setNotes] = useState("");
+
+  // Group state
+  const [myCohorts, setMyCohorts] = useState<MyCourse[]>([]);
+  const [selectedCohortId, setSelectedCohortId] = useState("");
+  const [groupTopic, setGroupTopic] = useState("");
+  const [groupNotes, setGroupNotes] = useState("");
+  const [groupPreferredAt, setGroupPreferredAt] = useState("");
+
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -159,11 +171,14 @@ export function BookModal({ mentorId, mentorName, onClose, onBooked }: {
       if (r.ok) setAvailability(r.data);
       setLoadingSlots(false);
     });
+    apiJson<MyCourse[]>("/api/me/courses").then((r) => {
+      if (r.ok) setMyCohorts(r.data);
+    });
   }, [mentorId]);
 
   const slots = computeSlots(availability);
 
-  async function submit() {
+  async function submit1on1() {
     if (!selectedSlot) { setError("Select an available time slot"); return; }
     setBusy(true);
     const result = await apiJson("/api/bookings", {
@@ -182,6 +197,30 @@ export function BookModal({ mentorId, mentorName, onClose, onBooked }: {
     onClose();
   }
 
+  async function submitGroup() {
+    if (!selectedCohortId) { setError("Select a cohort for the group session"); return; }
+    if (!groupPreferredAt) { setError("Select a preferred date and time"); return; }
+    setBusy(true);
+    const result = await apiJson("/api/bookings", {
+      method: "POST",
+      body: JSON.stringify({
+        mentorId,
+        cohortId: selectedCohortId,
+        scheduledAt: new Date(groupPreferredAt).toISOString(),
+        durationMinutes: 60,
+        topic: groupTopic || undefined,
+        notes: groupNotes || undefined,
+      }),
+    });
+    setBusy(false);
+    if (!result.ok) { setError(result.message); return; }
+    onBooked();
+    onClose();
+  }
+
+  // Min datetime for the group preferred time picker: 1 hour from now
+  const minDateTime = new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-surface border border-border rounded-2xl p-6 w-full max-w-md shadow-xl">
@@ -190,55 +229,119 @@ export function BookModal({ mentorId, mentorName, onClose, onBooked }: {
           <button onClick={onClose} className="text-text-muted hover:text-text-secondary"><X size={18} /></button>
         </div>
 
-        <div className="flex flex-col gap-3">
-          <div>
-            <label className="text-xs font-medium text-text-secondary mb-1.5 block">Available slots</label>
-            {loadingSlots && <p className="text-xs text-text-muted py-4 text-center">Loading availability…</p>}
-            {!loadingSlots && slots.length === 0 && (
-              <p className="text-xs text-text-muted py-4 text-center bg-surface-secondary rounded-lg">
-                {availability.length === 0
-                  ? "This mentor hasn't set availability yet."
-                  : "No available slots in the next 14 days."}
-              </p>
-            )}
-            {!loadingSlots && slots.length > 0 && (
-              <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto pr-1">
-                {slots.map((slot, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setSelectedSlot(slot)}
-                    className={`text-left text-sm px-3 py-2.5 rounded-lg border transition-colors ${
-                      selectedSlot?.scheduledAt.getTime() === slot.scheduledAt.getTime()
-                        ? "border-accent bg-accent-light text-accent font-medium"
-                        : "border-border bg-surface-secondary text-text-primary hover:border-accent"
-                    }`}
-                  >
-                    {slot.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div>
-            <label className="text-xs font-medium text-text-secondary">Topic (optional)</label>
-            <input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="What do you want to discuss?"
-              className="mt-1 w-full text-sm bg-surface-secondary border border-border rounded-md px-3 py-2 text-text-primary focus:outline-none focus:ring-1 focus:ring-accent" />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-text-secondary">Notes (optional)</label>
-            <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Any preparation notes…"
-              className="mt-1 w-full text-sm bg-surface-secondary border border-border rounded-md px-3 py-2 text-text-primary focus:outline-none focus:ring-1 focus:ring-accent resize-none" />
-          </div>
-
-          {error && <p className="text-xs text-error">{error}</p>}
-          <div className="flex gap-2 justify-end mt-1">
-            <button onClick={onClose} className="text-sm text-text-muted hover:text-text-secondary px-3 py-1.5">Cancel</button>
-            <Button onClick={submit} disabled={busy || !selectedSlot}>
-              {busy ? "Booking…" : "Request session"}
-            </Button>
-          </div>
+        {/* Session type tabs */}
+        <div className="flex items-center gap-1 bg-surface-secondary rounded-lg p-1 mb-4">
+          {(["1on1", "group"] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => { setSessionTab(tab); setError(null); }}
+              className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                sessionTab === tab ? "bg-surface text-accent shadow-sm" : "text-text-secondary hover:text-text-primary"
+              }`}
+            >
+              {tab === "1on1" ? "1:1 Session" : "Group Session"}
+            </button>
+          ))}
         </div>
+
+        {sessionTab === "1on1" ? (
+          <div className="flex flex-col gap-3">
+            <div>
+              <label className="text-xs font-medium text-text-secondary mb-1.5 block">Available slots</label>
+              {loadingSlots && <p className="text-xs text-text-muted py-4 text-center">Loading availability…</p>}
+              {!loadingSlots && slots.length === 0 && (
+                <p className="text-xs text-text-muted py-4 text-center bg-surface-secondary rounded-lg">
+                  {availability.length === 0
+                    ? "This mentor hasn't set availability yet."
+                    : "No available slots in the next 14 days."}
+                </p>
+              )}
+              {!loadingSlots && slots.length > 0 && (
+                <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto pr-1">
+                  {slots.map((slot, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setSelectedSlot(slot)}
+                      className={`text-left text-sm px-3 py-2.5 rounded-lg border transition-colors ${
+                        selectedSlot?.scheduledAt.getTime() === slot.scheduledAt.getTime()
+                          ? "border-accent bg-accent-light text-accent font-medium"
+                          : "border-border bg-surface-secondary text-text-primary hover:border-accent"
+                      }`}
+                    >
+                      {slot.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div>
+              <label className="text-xs font-medium text-text-secondary">Topic (optional)</label>
+              <input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="What do you want to discuss?"
+                className="mt-1 w-full text-sm bg-surface-secondary border border-border rounded-md px-3 py-2 text-text-primary focus:outline-none focus:ring-1 focus:ring-accent" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-text-secondary">Notes (optional)</label>
+              <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Any preparation notes…"
+                className="mt-1 w-full text-sm bg-surface-secondary border border-border rounded-md px-3 py-2 text-text-primary focus:outline-none focus:ring-1 focus:ring-accent resize-none" />
+            </div>
+            {error && <p className="text-xs text-error">{error}</p>}
+            <div className="flex gap-2 justify-end mt-1">
+              <button onClick={onClose} className="text-sm text-text-muted hover:text-text-secondary px-3 py-1.5">Cancel</button>
+              <Button onClick={submit1on1} disabled={busy || !selectedSlot}>
+                {busy ? "Booking…" : "Request session"}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            <div>
+              <label className="text-xs font-medium text-text-secondary mb-1.5 block">Cohort</label>
+              {myCohorts.length === 0 ? (
+                <p className="text-xs text-text-muted py-3 text-center bg-surface-secondary rounded-lg">
+                  You are not enrolled in any cohort yet.
+                </p>
+              ) : (
+                <select
+                  value={selectedCohortId}
+                  onChange={(e) => setSelectedCohortId(e.target.value)}
+                  className="w-full text-sm bg-surface-secondary border border-border rounded-md px-3 py-2 text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                >
+                  <option value="">Select a cohort…</option>
+                  {myCohorts.map((c) => (
+                    <option key={c.cohortId} value={c.cohortId}>{c.cohortName}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <div>
+              <label className="text-xs font-medium text-text-secondary">Preferred date &amp; time</label>
+              <input
+                type="datetime-local"
+                value={groupPreferredAt}
+                min={minDateTime}
+                onChange={(e) => setGroupPreferredAt(e.target.value)}
+                className="mt-1 w-full text-sm bg-surface-secondary border border-border rounded-md px-3 py-2 text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-text-secondary">Topic (optional)</label>
+              <input value={groupTopic} onChange={(e) => setGroupTopic(e.target.value)} placeholder="What should the group session cover?"
+                className="mt-1 w-full text-sm bg-surface-secondary border border-border rounded-md px-3 py-2 text-text-primary focus:outline-none focus:ring-1 focus:ring-accent" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-text-secondary">Notes (optional)</label>
+              <textarea rows={2} value={groupNotes} onChange={(e) => setGroupNotes(e.target.value)} placeholder="Any additional context…"
+                className="mt-1 w-full text-sm bg-surface-secondary border border-border rounded-md px-3 py-2 text-text-primary focus:outline-none focus:ring-1 focus:ring-accent resize-none" />
+            </div>
+            {error && <p className="text-xs text-error">{error}</p>}
+            <div className="flex gap-2 justify-end mt-1">
+              <button onClick={onClose} className="text-sm text-text-muted hover:text-text-secondary px-3 py-1.5">Cancel</button>
+              <Button onClick={submitGroup} disabled={busy || !selectedCohortId || !groupPreferredAt}>
+                {busy ? "Requesting…" : "Request group session"}
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

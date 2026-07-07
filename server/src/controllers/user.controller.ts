@@ -34,5 +34,5 @@ export async function update(req: Request, res: Response) {
 
 export async function remove(req: Request, res: Response) {
   await userService.deleteUser(String(req.params.id));
-  return success(res, null, 204);
+  return success(res, { deleted: true });
 }

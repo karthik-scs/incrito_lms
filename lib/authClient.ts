@@ -77,6 +77,11 @@ export async function apiJson<T = unknown>(path: string, options: ApiFetchOption
     return { ok: false, status: 0, message: "Could not reach the server. Check your connection and try again." };
   }
 
+  // 204 No Content has no body — treat as success directly
+  if (response.status === 204) {
+    return { ok: true, status: 204, data: null as T };
+  }
+
   const body = await response.json().catch(() => null);
 
   if (!response.ok || !body?.success) {

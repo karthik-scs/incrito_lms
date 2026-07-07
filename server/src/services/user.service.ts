@@ -102,8 +102,23 @@ export async function deleteUser(id: string) {
   await getUser(id);
   await assertNotSuperAdmin(id);
 
-  // Delete everything that references this user without onDelete: Cascade.
-  // Order: children before parents within each dependency chain.
+  // Block deletion if the user is assigned to courses — those FKs are non-nullable
+  // and cannot be cascade-deleted without destroying course data.
+  const courseCount = await prisma.course.count({
+    where: { OR: [{ mentorId: id }, { createdById: id }] },
+  });
+  if (courseCount > 0) {
+    throw new AppError(
+      "Cannot delete this user — they are assigned to one or more courses. Reassign those courses first.",
+      409
+    );
+  }
+
+  // WebRTC call sessions (caller and callee — no cascade on either FK)
+  await prisma.callSession.deleteMany({ where: { OR: [{ callerId: id }, { calleeId: id }] } });
+
+  // Submissions this user graded — null out the grader FK (nullable but no onDelete: SetNull)
+  await prisma.submission.updateMany({ where: { gradedById: id }, data: { gradedById: null } });
 
   // Content authored by the user (reactions first so comment/post deletes don't race with FK)
   await prisma.reaction.deleteMany({ where: { userId: id } });
@@ -112,6 +127,29 @@ export async function deleteUser(id: string) {
   await prisma.comment.deleteMany({ where: { authorId: id } });
   await prisma.post.deleteMany({ where: { authorId: id } });
   await prisma.chatMessage.deleteMany({ where: { senderId: id } });
+
+  // Admin/Mentor authored content (cascades handle child rows)
+  await prisma.communityEvent.deleteMany({ where: { createdById: id } });
+  await prisma.poll.deleteMany({ where: { createdById: id } });
+  await prisma.announcement.deleteMany({ where: { createdById: id } });
+  await prisma.community.deleteMany({ where: { createdById: id } });
+
+  // Assignments / assessments created by this user — delete others' submissions/attempts first
+  await prisma.submission.deleteMany({ where: { assignment: { createdById: id } } });
+  await prisma.assignment.deleteMany({ where: { createdById: id } });
+  await prisma.assessmentAttempt.deleteMany({ where: { assessment: { createdById: id } } });
+  await prisma.assessment.deleteMany({ where: { createdById: id } });
+
+  // Live classes hosted by this user — Attendance has no cascade from LiveClass, so delete first
+  const hostedClasses = await prisma.liveClass.findMany({
+    where: { mentorId: id },
+    select: { id: true },
+  });
+  if (hostedClasses.length > 0) {
+    const classIds = hostedClasses.map((c) => c.id);
+    await prisma.attendance.deleteMany({ where: { liveClassId: { in: classIds } } });
+    await prisma.liveClass.deleteMany({ where: { mentorId: id } });
+  }
 
   // Group call slots (mentor side) — deletes cascade to GroupCallRequest rows for those slots.
   await prisma.groupCallRequest.deleteMany({ where: { studentId: id } });
@@ -142,8 +180,8 @@ export async function deleteUser(id: string) {
   await prisma.notification.deleteMany({ where: { userId: id } });
   await prisma.verificationCode.deleteMany({ where: { userId: id } });
 
-  // ConversationParticipant, NotificationPreference, MentorAvailability all have onDelete: Cascade
-  // and will be removed automatically when the user row is deleted.
+  // ConversationParticipant, NotificationPreference, MentorAvailability, FileUpload,
+  // and UserStorageLimit all have onDelete: Cascade and are removed automatically.
   await prisma.user.delete({ where: { id } });
 }
 
